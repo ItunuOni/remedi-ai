@@ -18,7 +18,7 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState([]); 
   const [currentSessionId, setCurrentSessionId] = useState(null); 
   const [isLoading, setIsLoading] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // NEW: Mobile Sidebar State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile Sidebar State
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -137,11 +137,8 @@ export default function Dashboard() {
     doc.save("Remedi_Health_Report.pdf");
   };
 
-  // UPDATED: Simple, direct map opening (fixes mobile blocking issues)
   const findNearby = (type) => {
-    // type will be 'pharmacies' or 'hospitals'
     const query = type === 'pharmacies' ? 'pharmacies near me' : 'hospitals near me';
-    // Opens directly in a new tab - Mobile browsers allow this
     window.open(`https://www.google.com/maps/search/${encodeURIComponent(query)}/`, '_blank');
   };
 
@@ -203,21 +200,20 @@ export default function Dashboard() {
         <div className="blob-yellow bottom-[-20%] right-[-10%] opacity-20"></div>
       </div>
 
-      {/* --- NEW: MOBILE HEADER (Visible only on mobile) --- */}
-      <div className="md:hidden fixed top-0 left-0 w-full h-16 bg-slate-900/90 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-4 z-50">
+      {/* --- MOBILE HEADER (FIXED: z-40 so sidebar covers it) --- */}
+      <div className="md:hidden fixed top-0 left-0 w-full h-16 bg-slate-900/90 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-4 z-40">
         <div className="flex items-center gap-2">
            <div className="w-8 h-8"><Logo /></div>
            <span className="text-white font-bold tracking-wider text-lg">REMEDI</span>
         </div>
         <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-white">
-          {/* Hamburger Icon */}
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
         </button>
       </div>
 
-      {/* --- SIDEBAR (Updated for Responsive Layout) --- */}
+      {/* --- SIDEBAR (FIXED: Added bg-slate-900 for solid background on mobile) --- */}
       <div className={`
-        fixed inset-y-0 left-0 z-50 w-64 glass-prism border-r border-white/10 flex flex-col h-full 
+        fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 md:bg-transparent glass-prism border-r border-white/10 flex flex-col h-full 
         transform transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         md:relative md:translate-x-0
@@ -227,7 +223,6 @@ export default function Dashboard() {
             <div className="w-10 h-10 flex-shrink-0"><Logo /></div>
             <span className="text-white font-bold tracking-wider text-xl">REMEDI</span>
           </div>
-          {/* Close button for mobile */}
           <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400 hover:text-white">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
@@ -269,7 +264,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* --- OVERLAY (To close sidebar on mobile) --- */}
+      {/* --- OVERLAY --- */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
@@ -337,7 +332,6 @@ export default function Dashboard() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* --- IMPROVED RESPONSIVE INPUT AREA --- */}
         <div className="p-4 md:p-6 bg-slate-900 border-t border-white/5 shrink-0 z-20">
           <div className="max-w-4xl mx-auto relative group">
             <textarea
@@ -373,5 +367,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-// Backend connected
