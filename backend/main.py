@@ -9,9 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 
-if not api_key:
-    raise ValueError("No API Key found! Check your .env file.")
+load_dotenv()
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
+app = FastAPI()
 genai.configure(api_key=api_key)
 
 # Use the model
