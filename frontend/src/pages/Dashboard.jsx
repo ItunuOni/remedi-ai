@@ -7,7 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import { jsPDF } from 'jspdf'; 
 import Logo from '../components/Logo'; 
 
-const RAW_URL = "https://expert-enigma-gjgrpqxxxq739qx9-8000.app.github.dev/";
+const RAW_URL = "https://remedi-backend-5eu1.onrender.com";
 const BACKEND_URL = RAW_URL.replace(/\/$/, ""); 
 
 export default function Dashboard() {
@@ -348,3 +348,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+// Backend connected
