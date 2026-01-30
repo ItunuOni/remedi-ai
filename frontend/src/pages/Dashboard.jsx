@@ -18,6 +18,7 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState([]); 
   const [currentSessionId, setCurrentSessionId] = useState(null); 
   const [isLoading, setIsLoading] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // NEW: Mobile Sidebar State
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -76,6 +77,7 @@ export default function Dashboard() {
   const startNewSession = () => {
     setCurrentSessionId(null); 
     setMessages([]);
+    setIsSidebarOpen(false); // Close sidebar on mobile when starting new
   };
 
   const deleteSession = async (e, sessionId) => {
@@ -135,18 +137,12 @@ export default function Dashboard() {
     doc.save("Remedi_Health_Report.pdf");
   };
 
+  // UPDATED: Simple, direct map opening (fixes mobile blocking issues)
   const findNearby = (type) => {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition((position) => {
-      const lat = position.coords.latitude;
-      const lng = position.coords.longitude;
-      window.open(`https://www.google.com/maps/search/${type}/@${lat},${lng},15z`, '_blank');
-    }, () => {
-      alert("Unable to retrieve your location. Please allow location access.");
-    });
+    // type will be 'pharmacies' or 'hospitals'
+    const query = type === 'pharmacies' ? 'pharmacies near me' : 'hospitals near me';
+    // Opens directly in a new tab - Mobile browsers allow this
+    window.open(`https://www.google.com/maps/search/${encodeURIComponent(query)}/`, '_blank');
   };
 
   const handleSend = async () => {
@@ -207,11 +203,34 @@ export default function Dashboard() {
         <div className="blob-yellow bottom-[-20%] right-[-10%] opacity-20"></div>
       </div>
 
-      {/* --- SIDEBAR --- */}
-      <div className="w-64 flex-shrink-0 glass-prism border-r border-white/10 flex flex-col z-50 h-full relative">
-        <div className="h-20 min-h-[5rem] flex items-center gap-3 px-6 border-b border-white/10 shrink-0">
-          <div className="w-10 h-10 flex-shrink-0"><Logo /></div>
-          <span className="text-white font-bold tracking-wider text-xl">REMEDI</span>
+      {/* --- NEW: MOBILE HEADER (Visible only on mobile) --- */}
+      <div className="md:hidden fixed top-0 left-0 w-full h-16 bg-slate-900/90 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-4 z-50">
+        <div className="flex items-center gap-2">
+           <div className="w-8 h-8"><Logo /></div>
+           <span className="text-white font-bold tracking-wider text-lg">REMEDI</span>
+        </div>
+        <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-white">
+          {/* Hamburger Icon */}
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        </button>
+      </div>
+
+      {/* --- SIDEBAR (Updated for Responsive Layout) --- */}
+      <div className={`
+        fixed inset-y-0 left-0 z-50 w-64 glass-prism border-r border-white/10 flex flex-col h-full 
+        transform transition-transform duration-300 ease-in-out
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:relative md:translate-x-0
+      `}>
+        <div className="h-20 min-h-[5rem] flex items-center justify-between px-6 border-b border-white/10 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 flex-shrink-0"><Logo /></div>
+            <span className="text-white font-bold tracking-wider text-xl">REMEDI</span>
+          </div>
+          {/* Close button for mobile */}
+          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
         </div>
 
         <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
@@ -234,7 +253,7 @@ export default function Dashboard() {
           <div className="text-xs font-bold text-slate-500 uppercase mb-3 px-2 tracking-widest">History</div>
           <div className="space-y-2">
             {sessions.map((session) => (
-              <div key={session.id} onClick={() => setCurrentSessionId(session.id)} className={`group w-full flex items-center justify-between p-3 rounded-lg text-sm transition-all border cursor-pointer ${currentSessionId === session.id ? 'bg-[#00CCFF]/20 text-white border-[#00CCFF]/50' : 'text-slate-400 hover:text-white hover:bg-white/5 border-transparent'}`}>
+              <div key={session.id} onClick={() => { setCurrentSessionId(session.id); setIsSidebarOpen(false); }} className={`group w-full flex items-center justify-between p-3 rounded-lg text-sm transition-all border cursor-pointer ${currentSessionId === session.id ? 'bg-[#00CCFF]/20 text-white border-[#00CCFF]/50' : 'text-slate-400 hover:text-white hover:bg-white/5 border-transparent'}`}>
                 <span className="truncate flex-1 pr-2">{session.preview || "Untitled Diagnosis"}</span>
                 <button onClick={(e) => deleteSession(e, session.id)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-opacity p-1" title="Delete Record">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -250,9 +269,17 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* --- OVERLAY (To close sidebar on mobile) --- */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
+          onClick={() => setIsSidebarOpen(false)}
+        ></div>
+      )}
+
       {/* --- MAIN AREA --- */}
-      <div className="flex-1 flex flex-col h-full min-w-0 relative z-10">
-        <div className="h-20 min-h-[5rem] border-b border-white/5 flex items-center justify-between px-8 bg-slate-900/50 backdrop-blur-sm shrink-0">
+      <div className="flex-1 flex flex-col h-full min-w-0 relative z-10 pt-16 md:pt-0">
+        <div className="h-20 min-h-[5rem] border-b border-white/5 flex items-center justify-between px-4 md:px-8 bg-slate-900/50 backdrop-blur-sm shrink-0">
           <div>
             <h2 className="text-white font-semibold text-lg">AI Diagnostic Console</h2>
             <div className="flex items-center gap-2">
@@ -261,9 +288,10 @@ export default function Dashboard() {
             </div>
           </div>
           {messages.length > 0 && (
-            <button onClick={generatePDF} className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all hover:scale-105">
+            <button onClick={generatePDF} className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 md:px-4 rounded-lg text-xs font-bold flex items-center gap-2 transition-all hover:scale-105">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#00CCFF]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-              Download Report
+              <span className="hidden md:inline">Download Report</span>
+              <span className="md:hidden">PDF</span>
             </button>
           )}
         </div>
@@ -271,12 +299,12 @@ export default function Dashboard() {
         <div className="flex-1 p-4 md:p-8 overflow-y-auto space-y-6 relative custom-scrollbar">
           {!currentSessionId && messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center p-8">
-              <div className="max-w-2xl w-full glass-prism rounded-2xl p-10 text-center border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-                <div className="w-32 h-32 mx-auto mb-6"><Logo animate={true} /></div>
-                <h3 className="text-3xl font-bold text-white mb-3 capitalize">
+              <div className="max-w-2xl w-full glass-prism rounded-2xl p-6 md:p-10 text-center border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                <div className="w-24 h-24 md:w-32 md:h-32 mx-auto mb-6"><Logo animate={true} /></div>
+                <h3 className="text-2xl md:text-3xl font-bold text-white mb-3 capitalize">
                   Hi {user?.email?.split('@')[0] || "there"}, I'm here to help.
                 </h3>
-                <p className="text-slate-400 text-lg leading-relaxed">
+                <p className="text-slate-400 text-base md:text-lg leading-relaxed">
                   Tell me how you're feeling today. To give you the best advice, try to include how long you've felt this way and how strong the pain is.
                 </p>
               </div>
@@ -286,9 +314,9 @@ export default function Dashboard() {
           {messages.map((msg, index) => (
             <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'ai' && (
-                <div className="w-10 h-10 mr-3 mt-1 flex-shrink-0 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30"><Logo /></div>
+                <div className="w-8 h-8 md:w-10 md:h-10 mr-3 mt-1 flex-shrink-0 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30"><Logo /></div>
               )}
-              <div className={`max-w-[80%] p-4 rounded-2xl backdrop-blur-md border ${msg.role === 'user' ? 'bg-[#00CCFF]/10 border-[#00CCFF]/30 text-white rounded-tr-none whitespace-pre-wrap' : 'bg-white/5 border-white/10 text-slate-200 rounded-tl-none'}`}>
+              <div className={`max-w-[85%] p-4 rounded-2xl backdrop-blur-md border ${msg.role === 'user' ? 'bg-[#00CCFF]/10 border-[#00CCFF]/30 text-white rounded-tr-none whitespace-pre-wrap' : 'bg-white/5 border-white/10 text-slate-200 rounded-tl-none'}`}>
                 {msg.role === 'ai' ? (
                   <ReactMarkdown components={{
                       strong: ({node, ...props}) => <span className="font-bold text-[#00CCFF]" {...props} />,
@@ -302,7 +330,7 @@ export default function Dashboard() {
           ))}
           {isLoading && (
             <div className="flex justify-start">
-               <div className="w-10 h-10 mr-3 mt-1 flex-shrink-0 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30 animate-pulse"><Logo /></div>
+               <div className="w-8 h-8 md:w-10 md:h-10 mr-3 mt-1 flex-shrink-0 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30 animate-pulse"><Logo /></div>
               <div className="bg-white/5 border border-white/10 text-slate-400 p-4 rounded-2xl rounded-tl-none italic text-sm">Analyzing symptoms...</div>
             </div>
           )}
@@ -310,19 +338,16 @@ export default function Dashboard() {
         </div>
 
         {/* --- IMPROVED RESPONSIVE INPUT AREA --- */}
-        {/* --- CLEAN SINGLE-LINE INPUT AREA --- */}
         <div className="p-4 md:p-6 bg-slate-900 border-t border-white/5 shrink-0 z-20">
           <div className="max-w-4xl mx-auto relative group">
             <textarea
               id="chat-input"
               rows="1"
-              /* Clean, single-line placeholder */
               placeholder="Symptoms:"
               className="w-full bg-slate-800/80 text-white placeholder-slate-500 rounded-2xl border border-white/10 px-6 py-4 pr-16 focus:outline-none focus:border-[#00CCFF] focus:ring-1 focus:ring-[#00CCFF] transition-all shadow-lg resize-none overflow-hidden leading-tight flex items-center"
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
-                // Auto-adjust height only if they type multiple lines
                 e.target.style.height = 'auto';
                 e.target.style.height = `${e.target.scrollHeight}px`;
               }}
