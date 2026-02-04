@@ -8,8 +8,17 @@ import Logo from '../components/Logo';
 
 const RAW_URL = "https://remedi-backend-5eu1.onrender.com";
 
+// 🛡️ SECURITY: Only these emails can access the Doctor Dashboard
+// REPLACE "drawmecorel@gmail.com" WITH YOUR ACTUAL EMAIL IF DIFFERENT
+const AUTHORIZED_DOCTORS = [
+  "oniitunu804@gmail.com", 
+  "doctor@remedi.ng",
+  "test@doctor.com" 
+];
+
 export default function DoctorDashboard() {
-  const [user, setUser] = useState(null); 
+  const [user, setUser] = useState(null);
+  const [isAuthorized, setIsAuthorized] = useState(false); // <--- New Security State
   const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
@@ -18,23 +27,31 @@ export default function DoctorDashboard() {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
-  // 1. AUTH GUARD
+  // 1. AUTH & SECURITY GUARD
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         if (currentUser) {
-            setUser(currentUser);
+            // CHECK WHITELIST
+            if (AUTHORIZED_DOCTORS.includes(currentUser.email)) {
+                setUser(currentUser);
+                setIsAuthorized(true);
+            } else {
+                // User is logged in, BUT is not a doctor.
+                setUser(currentUser);
+                setIsAuthorized(false);
+            }
         } else {
             setUser(null);
+            setIsAuthorized(false);
         }
     });
     return () => unsubscribe();
   }, []);
 
-  // 2. Fetch ALL Patients (Pending & Completed)
+  // 2. Fetch Patients (Only if Authorized)
   useEffect(() => {
-    if (!user) return; 
+    if (!user || !isAuthorized) return; 
 
-    // MODIFIED: Shows EVERYTHING sorted by newest.
     const q = query(collection(db, "doctor_requests"), orderBy("createdAt", "desc"));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -45,7 +62,7 @@ export default function DoctorDashboard() {
       setError(err.message);
     });
     return () => unsubscribe();
-  }, [user]); 
+  }, [user, isAuthorized]); 
 
   // 3. Fetch Active Chat
   useEffect(() => {
@@ -85,19 +102,13 @@ export default function DoctorDashboard() {
     }
   };
 
-  // --- NEW: DELETE TICKET ---
   const deleteTicket = async (e, ticketId) => {
-    e.stopPropagation(); // Prevent opening the chat when clicking delete
+    e.stopPropagation(); 
     if (!window.confirm("Remove this patient from your waiting list?")) return;
-    
     try {
         await deleteDoc(doc(db, "doctor_requests", ticketId));
-        if (selectedPatient?.id === ticketId) {
-            setSelectedPatient(null);
-        }
-    } catch (err) {
-        alert("Failed to delete: " + err.message);
-    }
+        if (selectedPatient?.id === ticketId) setSelectedPatient(null);
+    } catch (err) { alert("Failed to delete: " + err.message); }
   };
 
   const sendPrescription = async () => {
@@ -109,7 +120,6 @@ export default function DoctorDashboard() {
             createdAt: serverTimestamp()
         });
 
-        // We mark as completed, but it stays in the list (visually changed)
         await updateDoc(doc(db, "doctor_requests", selectedPatient.id), {
             status: "completed",
             resolvedBy: auth.currentUser?.email || "Doctor"
@@ -122,22 +132,53 @@ export default function DoctorDashboard() {
     }
   };
 
+  // --- RENDER: NOT LOGGED IN ---
   if (!user) {
     return (
         <div className="flex h-screen bg-slate-900 items-center justify-center flex-col text-white">
             <div className="w-20 h-20 mb-6"><Logo /></div>
-            <h1 className="text-2xl font-bold mb-2">Doctor Access Only</h1>
+            <h1 className="text-2xl font-bold mb-2">Medical Staff Access</h1>
             <p className="text-slate-400 mb-6">Please log in to view the medical console.</p>
             <button 
                 onClick={() => navigate('/login')}
                 className="bg-[#00CCFF] text-slate-900 px-6 py-3 rounded-xl font-bold hover:scale-105 transition-transform"
             >
-                Log In System
+                Log In
             </button>
         </div>
     );
   }
 
+  // --- RENDER: ACCESS DENIED (Logged in but NOT a Doctor) ---
+  if (!isAuthorized) {
+    return (
+        <div className="flex h-screen bg-slate-900 items-center justify-center flex-col text-white">
+            <div className="w-16 h-16 mb-4 opacity-50"><Logo /></div>
+            <div className="bg-red-500/10 border border-red-500/50 p-8 rounded-2xl text-center max-w-md">
+                <h1 className="text-3xl font-bold text-red-500 mb-2">⛔ Access Denied</h1>
+                <p className="text-slate-300 mb-4">
+                    The account <strong>{user.email}</strong> is not authorized to access the Medical Staff Portal.
+                </p>
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={() => navigate('/dashboard')}
+                        className="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-xl font-bold transition-all"
+                    >
+                        Return to Patient Dashboard
+                    </button>
+                    <button 
+                        onClick={() => { signOut(auth); navigate('/login'); }}
+                        className="text-red-400 hover:text-red-300 text-sm"
+                    >
+                        Log Out & Switch Account
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+  }
+
+  // --- RENDER: AUTHORIZED DASHBOARD ---
   return (
     <div className="flex h-screen bg-slate-900 text-white font-sans">
       {/* Sidebar */}
@@ -153,7 +194,6 @@ export default function DoctorDashboard() {
             </div>
         )}
 
-        {/* UPDATED TITLE */}
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Patient Queue ({patients.length})</h2>
         
         <div className="space-y-2 flex-1 overflow-y-auto">
@@ -172,7 +212,6 @@ export default function DoctorDashboard() {
                     </div>
                     <div className="text-xs text-slate-400 truncate pr-6">{p.preview}</div>
                     
-                    {/* DELETE BUTTON (Only shows on hover) */}
                     <button 
                         onClick={(e) => deleteTicket(e, p.id)}
                         className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 p-2 transition-all"
@@ -198,7 +237,6 @@ export default function DoctorDashboard() {
                         {chatHistory.map((msg, idx) => (
                             <div key={idx} className={`p-4 rounded-xl text-sm max-w-[90%] shadow-sm ${msg.role === 'user' ? 'bg-[#00CCFF]/10 text-white ml-auto border border-[#00CCFF]/30 rounded-tr-none' : 'bg-white/5 text-slate-300 rounded-tl-none border border-white/5'}`}>
                                 <span className="text-[10px] uppercase font-bold opacity-50 block mb-2 tracking-wider">{msg.role}</span>
-                                {/* MARKDOWN RENDERER */}
                                 <ReactMarkdown components={{
                                     strong: ({node, ...props}) => <span className="font-bold text-[#00CCFF]" {...props} />,
                                     ul: ({node, ...props}) => <ul className="list-disc ml-4 space-y-2 mt-2" {...props} />,

@@ -100,7 +100,7 @@ export default function Dashboard() {
     }
   };
 
-  // --- UPDATED PDF GENERATOR (STRICT FILTER) ---
+  // --- UPDATED PDF GENERATOR (AGGRESSIVE FILTER) ---
   const generatePDF = () => {
     if (messages.length === 0) return;
     const doc = new jsPDF();
@@ -115,7 +115,6 @@ export default function Dashboard() {
     doc.setTextColor(255, 255, 255);
     doc.text("AI DIAGNOSTIC REPORT", 150, 25);
     
-    // Meta Data
     doc.setTextColor(0, 0, 0); 
     doc.setFontSize(10);
     doc.text(`Patient Reference: ${user?.email || 'Anonymous'}`, 20, 50);
@@ -125,20 +124,30 @@ export default function Dashboard() {
     
     let y = 70; 
 
-    // STRICT FILTER LOGIC
+    // STRICT FILTER LOGIC v2
     const validMessages = messages.filter(msg => {
-       const txt = msg.text.toLowerCase();
-       // 1. Must be longer than 3 chars
+       const txt = msg.text.toLowerCase().trim();
+       
+       // 1. Filter Short Messages
        if (txt.length < 3) return false;
-       // 2. Remove System Messages
+
+       // 2. Filter System Messages
        if (txt.includes("request sent") || txt.includes("doctor's note")) return false;
-       // 3. Remove Chit-Chat
-       if (txt.includes("thank you") || txt.includes("you are welcome") || txt.includes("hello")) return false;
+       
+       // 3. Filter Chit-Chat (Expanded List)
+       const chitChat = [
+         "thank you", "thanks", "thx", 
+         "you're welcome", "you are welcome", "no problem",
+         "happy to help", "glad i could help", "hello", "hi there",
+         "get well soon", "goodbye", "bye"
+       ];
+       if (chitChat.some(phrase => txt.includes(phrase))) return false;
+
        return true;
     });
 
     if (validMessages.length === 0) {
-        alert("No medical data to export yet.");
+        alert("No clinical data to export. (Chatter removed)");
         return;
     }
 
@@ -147,29 +156,24 @@ export default function Dashboard() {
       const isAI = msg.role === 'ai';
       
       const role = isAI ? "REMEDI AI ANALYSIS:" : "PATIENT SYMPTOMS:";
-      const color = isAI ? [0, 100, 150] : [80, 80, 80]; // AI = Blue, User = Grey
+      const color = isAI ? [0, 100, 150] : [80, 80, 80]; 
       
-      // Role Title
       doc.setFont("helvetica", "bold");
       doc.setTextColor(...color);
       doc.text(role, 20, y);
       
-      // Message Body (Cleaned)
       doc.setFont("helvetica", "normal");
       doc.setTextColor(0, 0, 0);
-      // Remove Markdown symbols for PDF readability
       const cleanText = msg.text.replace(/\*\*/g, '').replace(/\*/g, '•').replace(/__/g, ''); 
       const splitText = doc.splitTextToSize(cleanText, 170); 
       
       doc.text(splitText, 20, y + 6);
-      y += (splitText.length * 6) + 12; // Spacing
+      y += (splitText.length * 6) + 12; 
     });
 
-    // Footer
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
     doc.text("Disclaimer: This report is AI-generated and does not constitute a formal medical diagnosis. Please consult a doctor.", 20, 290);
-    
     doc.save("Remedi_Health_Report.pdf");
   };
 
