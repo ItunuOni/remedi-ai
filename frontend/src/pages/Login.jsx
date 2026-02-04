@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { auth, googleProvider } from '../firebase'; // <--- Import Google Provider
+import { auth, googleProvider } from '../firebase'; 
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
-import Logo from '../components/Logo'; // Use your official logo
+import Logo from '../components/Logo'; 
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true); 
@@ -27,7 +27,6 @@ export default function Login() {
     }
   };
 
-  // --- GOOGLE LOGIN FUNCTION ---
   const handleGoogleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
@@ -130,7 +129,7 @@ export default function Login() {
         </button>
 
         {/* Toggle Login/Signup */}
-        <div className="mt-8 text-center">
+        <div className="mt-8 text-center space-y-4">
           <button 
             onClick={() => setIsLogin(!isLogin)}
             className="text-sm text-blue-200 hover:text-white transition-colors"
@@ -140,6 +139,14 @@ export default function Login() {
               {isLogin ? "Create Account" : "Sign In"}
             </span>
           </button>
+          
+          {/* DOCTOR LOGIN LINK - SUBTLE & PROFESSIONAL */}
+          <div className="border-t border-white/10 pt-4">
+             <Link to="/doctor" className="text-xs text-slate-500 hover:text-[#00CCFF] transition-colors flex items-center justify-center gap-2">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                Medical Staff Access
+             </Link>
+          </div>
         </div>
 
       </div>

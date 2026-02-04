@@ -100,9 +100,12 @@ export default function Dashboard() {
     }
   };
 
+  // --- UPDATED PDF GENERATOR (STRICT FILTER) ---
   const generatePDF = () => {
     if (messages.length === 0) return;
     const doc = new jsPDF();
+    
+    // Header Styling
     doc.setFillColor(15, 23, 42); 
     doc.rect(0, 0, 210, 40, 'F');
     doc.setTextColor(0, 204, 255); 
@@ -111,38 +114,62 @@ export default function Dashboard() {
     doc.setFontSize(10);
     doc.setTextColor(255, 255, 255);
     doc.text("AI DIAGNOSTIC REPORT", 150, 25);
+    
+    // Meta Data
     doc.setTextColor(0, 0, 0); 
     doc.setFontSize(10);
     doc.text(`Patient Reference: ${user?.email || 'Anonymous'}`, 20, 50);
     doc.text(`Report Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 20, 55);
     doc.setDrawColor(200, 200, 200);
     doc.line(20, 60, 190, 60);
-    let y = 70; 
     
-    // FILTER: Ignore short "thank you" messages in PDF
+    let y = 70; 
+
+    // STRICT FILTER LOGIC
     const validMessages = messages.filter(msg => {
        const txt = msg.text.toLowerCase();
-       return txt.length > 5 && !txt.includes("thank you") && !txt.includes("you are welcome");
+       // 1. Must be longer than 3 chars
+       if (txt.length < 3) return false;
+       // 2. Remove System Messages
+       if (txt.includes("request sent") || txt.includes("doctor's note")) return false;
+       // 3. Remove Chit-Chat
+       if (txt.includes("thank you") || txt.includes("you are welcome") || txt.includes("hello")) return false;
+       return true;
     });
+
+    if (validMessages.length === 0) {
+        alert("No medical data to export yet.");
+        return;
+    }
 
     validMessages.forEach(msg => {
       if (y > 270) { doc.addPage(); y = 20; }
       const isAI = msg.role === 'ai';
+      
       const role = isAI ? "REMEDI AI ANALYSIS:" : "PATIENT SYMPTOMS:";
-      const color = isAI ? [0, 100, 150] : [80, 80, 80];
+      const color = isAI ? [0, 100, 150] : [80, 80, 80]; // AI = Blue, User = Grey
+      
+      // Role Title
       doc.setFont("helvetica", "bold");
       doc.setTextColor(...color);
       doc.text(role, 20, y);
+      
+      // Message Body (Cleaned)
       doc.setFont("helvetica", "normal");
       doc.setTextColor(0, 0, 0);
-      const cleanText = msg.text.replace(/\*\*/g, '').replace(/\*/g, '•');
+      // Remove Markdown symbols for PDF readability
+      const cleanText = msg.text.replace(/\*\*/g, '').replace(/\*/g, '•').replace(/__/g, ''); 
       const splitText = doc.splitTextToSize(cleanText, 170); 
+      
       doc.text(splitText, 20, y + 6);
-      y += (splitText.length * 6) + 12; 
+      y += (splitText.length * 6) + 12; // Spacing
     });
+
+    // Footer
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
     doc.text("Disclaimer: This report is AI-generated and does not constitute a formal medical diagnosis. Please consult a doctor.", 20, 290);
+    
     doc.save("Remedi_Health_Report.pdf");
   };
 
