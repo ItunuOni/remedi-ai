@@ -15,8 +15,8 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# Use the model
-model = genai.GenerativeModel('models/gemini-2.0-flash-exp') 
+# UPDATE: Using the specific model found in your scan
+model = genai.GenerativeModel('models/gemini-2.0-flash') 
 
 app = FastAPI()
 
@@ -56,6 +56,7 @@ async def chat_endpoint(request: ChatRequest):
         return {"response": response.text}
     
     except Exception as e:
+        print(f"ERROR: {str(e)}") # Log the error to Render console
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/summarize")
@@ -73,6 +74,7 @@ async def summarize_endpoint(request: SummaryRequest):
         response = model.generate_content(full_prompt)
         return {"response": response.text}
     except Exception as e:
+        print(f"ERROR: {str(e)}") 
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
