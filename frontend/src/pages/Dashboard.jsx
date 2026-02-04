@@ -339,7 +339,7 @@ export default function Dashboard() {
           {/* ACTIONS SECTION (Video & Specialist) */}
           <div className="grid grid-cols-[1fr_auto] gap-2 mb-8">
               <button onClick={requestDoctor} className="p-3 rounded-xl bg-[#00CCFF] hover:bg-[#00bfe6] text-slate-900 font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg hover:scale-105">
-                 <span>👨‍⚕️</span> Verify
+                 <span>👨‍⚕️</span> Verify with a specialist
               </button>
               <button onClick={startVideoChat} title="Start Video Consultation" className="p-3 rounded-xl bg-purple-500/20 hover:bg-purple-500/40 border border-purple-500/50 text-purple-300 font-bold flex items-center justify-center transition-all hover:scale-105">
                  <span>📹</span>
