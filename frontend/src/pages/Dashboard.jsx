@@ -71,7 +71,6 @@ export default function Dashboard() {
     } catch (err) { console.error(err); alert("Failed to delete record."); }
   };
 
-  // --- NEW FEATURE: REQUEST DOCTOR ---
   const requestDoctor = async () => {
     if (!currentSessionId || messages.length === 0) {
         alert("Please explain your symptoms to the AI first.");
@@ -80,7 +79,6 @@ export default function Dashboard() {
     if (!window.confirm("This will send your chat history to a licensed specialist for review. Continue?")) return;
 
     try {
-        // Create a 'Ticket' in a global collection for the doctor to see
         await addDoc(collection(db, "doctor_requests"), {
             userId: user.uid,
             userEmail: user.email,
@@ -90,7 +88,6 @@ export default function Dashboard() {
             createdAt: serverTimestamp()
         });
         
-        // Add a system message to the chat
         await addDoc(collection(db, "users", user.uid, "sessions", currentSessionId, "messages"), {
             role: "ai",
             text: "✅ **REQUEST SENT:** A specialist has been notified. You will receive a response here shortly.",
@@ -121,7 +118,14 @@ export default function Dashboard() {
     doc.setDrawColor(200, 200, 200);
     doc.line(20, 60, 190, 60);
     let y = 70; 
-    messages.forEach(msg => {
+    
+    // FILTER: Ignore short "thank you" messages in PDF
+    const validMessages = messages.filter(msg => {
+       const txt = msg.text.toLowerCase();
+       return txt.length > 5 && !txt.includes("thank you") && !txt.includes("you are welcome");
+    });
+
+    validMessages.forEach(msg => {
       if (y > 270) { doc.addPage(); y = 20; }
       const isAI = msg.role === 'ai';
       const role = isAI ? "REMEDI AI ANALYSIS:" : "PATIENT SYMPTOMS:";

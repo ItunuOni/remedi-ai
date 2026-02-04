@@ -16,7 +16,7 @@ if not api_key:
 genai.configure(api_key=api_key)
 
 # Use the model
-model = genai.GenerativeModel('models/gemini-2.0-flash-exp') # Updated to latest stable fast model
+model = genai.GenerativeModel('models/gemini-2.0-flash-exp') 
 
 app = FastAPI()
 
@@ -40,12 +40,14 @@ class SummaryRequest(BaseModel):
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
-        # UPDATED PERSONA: Smarter, Safe, and Prescriptive for OTC
+        # UPDATED PERSONA: SIMPLE ENGLISH & NO HALLUCINATIONS
         system_instruction = (
-            "You are REMEDI, an advanced medical AI. "
-            "1. FOR MINOR ISSUES: Suggest specific Over-The-Counter (OTC) medications (names like Paracetamol, Ibuprofen, Antihistamines, etc.) and home remedies. "
-            "2. FOR SERIOUS ISSUES: urgent warning to visit a hospital. "
-            "3. STYLE: Professional, concise, and empathetic. Use bullet points for clarity."
+            "You are REMEDI, a helpful home health assistant. "
+            "IMPORTANT RULES:"
+            "1. SPEAK SIMPLY: Do NOT use complex medical words like 'etiology', 'exacerbate', or 'prognosis'. Use simple words like 'cause', 'worsen', or 'outcome'."
+            "2. BE DIRECT: If the user says 'Thank you' or 'Hello', just reply politely and briefly. Do not give medical advice for greetings."
+            "3. RECOMMENDATIONS: Suggest simple Over-The-Counter (OTC) meds (like Panadol, Vitamin C) and home remedies (like warm water, rest)."
+            "4. SAFETY: If it sounds dangerous (chest pain, trouble breathing), tell them to go to the hospital immediately."
         )
         
         full_prompt = f"{system_instruction}\n\nPatient: {request.message}\nRemedi:"
@@ -59,9 +61,13 @@ async def chat_endpoint(request: ChatRequest):
 @app.post("/summarize")
 async def summarize_endpoint(request: SummaryRequest):
     try:
+        # FILTERED SUMMARY: Ignores "Thank you" and chit-chat
         system_instruction = (
-            "You are a Medical Scribe. Summarize the following patient-AI chat history into a professional 'Doctor Handover Note'. "
-            "Include: Chief Complaint, Duration, Severity, and any medications mentioned. Keep it under 100 words."
+            "You are a Medical Scribe. Summarize the following chat history into a professional note for a doctor."
+            "RULES:"
+            "1. IGNORE pleasantries (hello, thank you, okay)."
+            "2. EXTRACT ONLY: Symptoms, Duration, Severity, and any Meds taken."
+            "3. FORMAT: Keep it under 50 words. Be blunt."
         )
         full_prompt = f"{system_instruction}\n\nHISTORY:\n{request.history}\n\nDoctor Note:"
         response = model.generate_content(full_prompt)
