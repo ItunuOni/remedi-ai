@@ -9,13 +9,12 @@ from dotenv import load_dotenv
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 
-# Fallback if specific key is missing, check standard GOOGLE_API_KEY
 if not api_key:
     api_key = os.getenv("GOOGLE_API_KEY")
 
 genai.configure(api_key=api_key)
 
-# UPDATE: Using the specific model found in your scan
+# Using the stable model found in your scan
 model = genai.GenerativeModel('models/gemini-2.0-flash') 
 
 app = FastAPI()
@@ -40,14 +39,15 @@ class SummaryRequest(BaseModel):
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
-        # UPDATED PERSONA: SIMPLE ENGLISH & NO HALLUCINATIONS
+        # UPDATED PERSONA: NOW INCLUDES EMERGENCY TRIGGER
         system_instruction = (
             "You are REMEDI, a helpful home health assistant. "
             "IMPORTANT RULES:"
-            "1. SPEAK SIMPLY: Do NOT use complex medical words like 'etiology', 'exacerbate', or 'prognosis'. Use simple words like 'cause', 'worsen', or 'outcome'."
-            "2. BE DIRECT: If the user says 'Thank you' or 'Hello', just reply politely and briefly. Do not give medical advice for greetings."
-            "3. RECOMMENDATIONS: Suggest simple Over-The-Counter (OTC) meds (like Panadol, Vitamin C) and home remedies (like warm water, rest)."
-            "4. SAFETY: If it sounds dangerous (chest pain, trouble breathing), tell them to go to the hospital immediately."
+            "1. SPEAK SIMPLY: Use simple English. No complex medical jargon."
+            "2. BE DIRECT: Ignore pleasantries like 'Thank you' or 'Hello'."
+            "3. RECOMMENDATIONS: Suggest OTC meds (Panadol, Vitamin C) and home remedies."
+            "4. 🚨 CRITICAL SAFETY: If the user mentions life-threatening symptoms (chest pain, coughing blood, can't breathe, dying, unconsciousness, severe bleeding), "
+            "YOU MUST start your response with exactly: '🚨 EMERGENCY_TRIGGER 🚨'. Then tell them to go to the hospital immediately."
         )
         
         full_prompt = f"{system_instruction}\n\nPatient: {request.message}\nRemedi:"
@@ -56,17 +56,16 @@ async def chat_endpoint(request: ChatRequest):
         return {"response": response.text}
     
     except Exception as e:
-        print(f"ERROR: {str(e)}") # Log the error to Render console
+        print(f"ERROR: {str(e)}") 
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/summarize")
 async def summarize_endpoint(request: SummaryRequest):
     try:
-        # FILTERED SUMMARY: Ignores "Thank you" and chit-chat
         system_instruction = (
             "You are a Medical Scribe. Summarize the following chat history into a professional note for a doctor."
             "RULES:"
-            "1. IGNORE pleasantries (hello, thank you, okay)."
+            "1. IGNORE pleasantries."
             "2. EXTRACT ONLY: Symptoms, Duration, Severity, and any Meds taken."
             "3. FORMAT: Keep it under 50 words. Be blunt."
         )

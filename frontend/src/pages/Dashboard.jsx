@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import ReactMarkdown from 'react-markdown'; 
 import { jsPDF } from 'jspdf'; 
 import Logo from '../components/Logo'; 
@@ -19,6 +19,12 @@ export default function Dashboard() {
   const [currentSessionId, setCurrentSessionId] = useState(null); 
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
+  
+  // New States for Features
+  const [showSettings, setShowSettings] = useState(false);
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [emergencyConfig, setEmergencyConfig] = useState({ contactName: '', hospitalEmail: '' });
+  
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -29,10 +35,36 @@ export default function Dashboard() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) { setUser(currentUser); } else { navigate('/'); }
+      if (currentUser) { 
+        setUser(currentUser); 
+        loadSettings(currentUser.uid); // Load user preferences
+      } else { 
+        navigate('/'); 
+      }
     });
     return () => unsubscribe();
   }, [navigate]);
+
+  // Load saved hospital settings
+  const loadSettings = async (uid) => {
+    try {
+        const docRef = doc(db, "users", uid, "settings", "profile");
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            setEmergencyConfig(docSnap.data());
+        }
+    } catch (err) { console.error("Error loading settings", err); }
+  };
+
+  const saveSettings = async (e) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+        await setDoc(doc(db, "users", user.uid, "settings", "profile"), emergencyConfig);
+        alert("Emergency Profile Saved!");
+        setShowSettings(false);
+    } catch (err) { alert("Failed to save settings."); }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -64,11 +96,22 @@ export default function Dashboard() {
 
   const deleteSession = async (e, sessionId) => {
     e.stopPropagation(); 
-    if (!window.confirm("Are you sure you want to delete this diagnosis record? This cannot be undone.")) return;
+    if (!window.confirm("Delete this record?")) return;
     try {
       await deleteDoc(doc(db, "users", user.uid, "sessions", sessionId));
       if (currentSessionId === sessionId) { startNewSession(); }
-    } catch (err) { console.error(err); alert("Failed to delete record."); }
+    } catch (err) { console.error(err); }
+  };
+
+  // --- VIDEO CHAT FEATURE ---
+  const startVideoChat = () => {
+    if (!currentSessionId) {
+        alert("Please start a diagnosis first.");
+        return;
+    }
+    // Generates a unique, secure room link based on the Session ID
+    const roomLink = `https://meet.jit.si/remedi-secure-${currentSessionId}`;
+    window.open(roomLink, '_blank');
   };
 
   const requestDoctor = async () => {
@@ -76,7 +119,7 @@ export default function Dashboard() {
         alert("Please explain your symptoms to the AI first.");
         return;
     }
-    if (!window.confirm("This will send your chat history to a licensed specialist for review. Continue?")) return;
+    if (!window.confirm("Send this report to a specialist?")) return;
 
     try {
         await addDoc(collection(db, "doctor_requests"), {
@@ -90,22 +133,26 @@ export default function Dashboard() {
         
         await addDoc(collection(db, "users", user.uid, "sessions", currentSessionId, "messages"), {
             role: "ai",
-            text: "✅ **REQUEST SENT:** A specialist has been notified. You will receive a response here shortly.",
+            text: "✅ **REQUEST SENT:** A specialist has been notified.",
             createdAt: serverTimestamp()
         });
-        alert("Request sent successfully!");
-    } catch (error) {
-        console.error(error);
-        alert("Failed to send request.");
+        alert("Request sent!");
+    } catch (error) { console.error(error); alert("Failed to send request."); }
+  };
+
+  // --- EMERGENCY DISPATCH LOGIC ---
+  const handleEmergencyDispatch = () => {
+    const targetEmail = emergencyConfig.hospitalEmail || prompt("No preset hospital found. Enter email to send report:");
+    if (targetEmail) {
+        // In a real app, this would trigger an email API. For MVP, we simulate the alert.
+        alert(`🚨 EMERGENCY REPORT DISPATCHED TO: ${targetEmail}\n\nLocation: Lagos, Nigeria (Simulated)\nPatient: ${user.email}`);
+        setShowEmergencyModal(false);
     }
   };
 
-  // --- UPDATED PDF GENERATOR (AGGRESSIVE FILTER) ---
   const generatePDF = () => {
     if (messages.length === 0) return;
     const doc = new jsPDF();
-    
-    // Header Styling
     doc.setFillColor(15, 23, 42); 
     doc.rect(0, 0, 210, 40, 'F');
     doc.setTextColor(0, 204, 255); 
@@ -114,66 +161,38 @@ export default function Dashboard() {
     doc.setFontSize(10);
     doc.setTextColor(255, 255, 255);
     doc.text("AI DIAGNOSTIC REPORT", 150, 25);
-    
     doc.setTextColor(0, 0, 0); 
     doc.setFontSize(10);
     doc.text(`Patient Reference: ${user?.email || 'Anonymous'}`, 20, 50);
-    doc.text(`Report Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 20, 55);
-    doc.setDrawColor(200, 200, 200);
-    doc.line(20, 60, 190, 60);
-    
+    doc.text(`Report Date: ${new Date().toLocaleDateString()}`, 20, 55);
     let y = 70; 
 
-    // STRICT FILTER LOGIC v2
+    // STRICT FILTER LOGIC
     const validMessages = messages.filter(msg => {
        const txt = msg.text.toLowerCase().trim();
-       
-       // 1. Filter Short Messages
        if (txt.length < 3) return false;
-
-       // 2. Filter System Messages
-       if (txt.includes("request sent") || txt.includes("doctor's note")) return false;
-       
-       // 3. Filter Chit-Chat (Expanded List)
-       const chitChat = [
-         "thank you", "thanks", "thx", 
-         "you're welcome", "you are welcome", "no problem",
-         "happy to help", "glad i could help", "hello", "hi there",
-         "get well soon", "goodbye", "bye"
-       ];
+       if (txt.includes("request sent") || txt.includes("doctor's note") || txt.includes("emergency_trigger")) return false;
+       const chitChat = ["thank you", "thanks", "you're welcome", "hello", "hi there"];
        if (chitChat.some(phrase => txt.includes(phrase))) return false;
-
        return true;
     });
 
-    if (validMessages.length === 0) {
-        alert("No clinical data to export. (Chatter removed)");
-        return;
-    }
+    if (validMessages.length === 0) { alert("No clinical data to export."); return; }
 
     validMessages.forEach(msg => {
       if (y > 270) { doc.addPage(); y = 20; }
       const isAI = msg.role === 'ai';
-      
       const role = isAI ? "REMEDI AI ANALYSIS:" : "PATIENT SYMPTOMS:";
-      const color = isAI ? [0, 100, 150] : [80, 80, 80]; 
-      
       doc.setFont("helvetica", "bold");
-      doc.setTextColor(...color);
+      doc.setTextColor(isAI ? 0 : 80, isAI ? 100 : 80, isAI ? 150 : 80);
       doc.text(role, 20, y);
-      
       doc.setFont("helvetica", "normal");
       doc.setTextColor(0, 0, 0);
-      const cleanText = msg.text.replace(/\*\*/g, '').replace(/\*/g, '•').replace(/__/g, ''); 
+      const cleanText = msg.text.replace(/\*\*/g, '').replace(/🚨 EMERGENCY_TRIGGER 🚨/g, ''); 
       const splitText = doc.splitTextToSize(cleanText, 170); 
-      
       doc.text(splitText, 20, y + 6);
       y += (splitText.length * 6) + 12; 
     });
-
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text("Disclaimer: This report is AI-generated and does not constitute a formal medical diagnosis. Please consult a doctor.", 20, 290);
     doc.save("Remedi_Health_Report.pdf");
   };
 
@@ -183,8 +202,7 @@ export default function Dashboard() {
   };
 
   const handleSend = async () => {
-    if (!input.trim()) return;
-    if (!user) return;
+    if (!input.trim() || !user) return;
     const textToSend = input;
     setInput('');
     setIsLoading(true);
@@ -212,7 +230,15 @@ export default function Dashboard() {
         body: JSON.stringify({ message: textToSend }),
       });
       const data = await response.json();
-      const aiText = data.response || "Error: No response from AI.";
+      let aiText = data.response || "Error: No response.";
+
+      // 🚨 CHECK FOR EMERGENCY TRIGGER
+      if (aiText.includes("EMERGENCY_TRIGGER")) {
+         setShowEmergencyModal(true);
+         // Clean the text for display so user doesn't see the code word
+         aiText = aiText.replace("🚨 EMERGENCY_TRIGGER 🚨", "").trim();
+      }
+
       await addDoc(collection(db, "users", user.uid, "sessions", activeSessionId, "messages"), {
         role: "ai",
         text: aiText,
@@ -220,7 +246,7 @@ export default function Dashboard() {
       });
     } catch (error) {
       console.error(error);
-      setMessages(prev => [...prev, { role: 'ai', text: "System Error: Neural Core Unreachable." }]);
+      setMessages(prev => [...prev, { role: 'ai', text: "System Error." }]);
     } finally {
       setIsLoading(false);
     }
@@ -232,35 +258,64 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen w-full bg-slate-900 text-white font-sans overflow-hidden">
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="blob-teal top-[-20%] left-[-10%] opacity-20"></div>
-        <div className="blob-yellow bottom-[-20%] right-[-10%] opacity-20"></div>
-      </div>
+      {/* SETTINGS MODAL */}
+      {showSettings && (
+         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-slate-800 border border-white/10 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+                <h3 className="text-xl font-bold text-[#00CCFF] mb-4">Emergency Profile</h3>
+                <form onSubmit={saveSettings} className="space-y-4">
+                    <div>
+                        <label className="text-xs uppercase text-slate-400 font-bold">Primary Contact Name</label>
+                        <input className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-[#00CCFF] outline-none" 
+                            value={emergencyConfig.contactName} onChange={e => setEmergencyConfig({...emergencyConfig, contactName: e.target.value})} placeholder="e.g. My Husband" />
+                    </div>
+                    <div>
+                        <label className="text-xs uppercase text-slate-400 font-bold">Preferred Hospital Email</label>
+                        <input className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-[#00CCFF] outline-none" 
+                            value={emergencyConfig.hospitalEmail} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalEmail: e.target.value})} placeholder="emergency@hospital.com" />
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                        <button type="button" onClick={() => setShowSettings(false)} className="flex-1 py-3 rounded-xl hover:bg-white/5 border border-white/10">Cancel</button>
+                        <button type="submit" className="flex-1 bg-[#00CCFF] text-slate-900 font-bold py-3 rounded-xl hover:scale-105 transition-transform">Save Profile</button>
+                    </div>
+                </form>
+            </div>
+         </div>
+      )}
 
-      <div className="md:hidden fixed top-0 left-0 w-full h-16 bg-slate-900/90 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-4 z-40">
-        <div className="flex items-center gap-2">
-           <div className="w-8 h-8"><Logo /></div>
-           <span className="text-white font-bold tracking-wider text-lg">REMEDI</span>
-        </div>
-        <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-white">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-        </button>
-      </div>
+      {/* EMERGENCY MODAL (RED ALERT) */}
+      {showEmergencyModal && (
+         <div className="fixed inset-0 bg-red-900/90 z-[70] flex items-center justify-center p-4 animate-pulse">
+            <div className="bg-white text-red-600 p-8 rounded-2xl w-full max-w-lg shadow-[0_0_50px_rgba(255,0,0,0.5)] text-center border-4 border-red-600">
+                <div className="text-6xl mb-4">🚨</div>
+                <h2 className="text-3xl font-black mb-2 uppercase">Emergency Detected</h2>
+                <p className="text-slate-800 mb-6 font-semibold">Your symptoms require immediate medical attention.</p>
+                
+                <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-6 text-left">
+                    <p className="text-sm text-slate-500 uppercase font-bold mb-1">Dispatching To:</p>
+                    <p className="text-lg font-bold text-slate-900">{emergencyConfig.hospitalEmail || "Emergency Services (Pending Input)"}</p>
+                </div>
 
-      <div className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 md:bg-transparent glass-prism border-r border-white/10 flex flex-col h-full 
-        transform transition-transform duration-300 ease-in-out
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:relative md:translate-x-0
-      `}>
-        <div className="h-20 min-h-[5rem] flex items-center justify-between px-6 border-b border-white/10 shrink-0">
+                <div className="flex flex-col gap-3">
+                    <button onClick={handleEmergencyDispatch} className="w-full bg-red-600 hover:bg-red-700 text-white font-black text-xl py-4 rounded-xl shadow-lg transition-transform hover:scale-105 uppercase">
+                        NOTIFY HOSPITAL NOW
+                    </button>
+                    <button onClick={() => setShowEmergencyModal(false)} className="text-slate-400 text-sm hover:text-slate-600 underline">
+                        I am safe, dismiss alert
+                    </button>
+                </div>
+            </div>
+         </div>
+      )}
+
+      {/* ... (Existing Sidebar & Layout) ... */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 md:bg-transparent glass-prism border-r border-white/10 flex flex-col h-full transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
+        <div className="h-20 flex items-center justify-between px-6 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 flex-shrink-0"><Logo /></div>
             <span className="text-white font-bold tracking-wider text-xl">REMEDI</span>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400 hover:text-white">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-          </button>
+          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400 hover:text-white">X</button>
         </div>
 
         <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
@@ -268,6 +323,7 @@ export default function Dashboard() {
             <span className="text-xl font-bold">+</span> New Diagnosis
           </button>
           
+          {/* FIND CARE SECTION */}
           <div className="text-xs font-bold text-slate-500 uppercase mb-3 px-2 tracking-widest">Find Care</div>
           <div className="grid grid-cols-2 gap-2 mb-8 px-1">
             <button onClick={() => findNearby('pharmacies')} className="p-3 rounded-xl bg-[#00CCFF]/10 hover:bg-[#00CCFF]/20 border border-[#00CCFF]/30 flex flex-col items-center gap-1 transition-all">
@@ -280,26 +336,33 @@ export default function Dashboard() {
             </button>
           </div>
 
-          <button onClick={requestDoctor} className="w-full p-3 rounded-xl bg-[#00CCFF] hover:bg-[#00bfe6] text-slate-900 font-bold text-sm mb-8 flex items-center justify-center gap-2 transition-all shadow-lg hover:scale-105">
-             <span>👨‍⚕️</span> Verify with Specialist
-          </button>
+          {/* ACTIONS SECTION (Video & Specialist) */}
+          <div className="grid grid-cols-[1fr_auto] gap-2 mb-8">
+              <button onClick={requestDoctor} className="p-3 rounded-xl bg-[#00CCFF] hover:bg-[#00bfe6] text-slate-900 font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg hover:scale-105">
+                 <span>👨‍⚕️</span> Verify
+              </button>
+              <button onClick={startVideoChat} title="Start Video Consultation" className="p-3 rounded-xl bg-purple-500/20 hover:bg-purple-500/40 border border-purple-500/50 text-purple-300 font-bold flex items-center justify-center transition-all hover:scale-105">
+                 <span>📹</span>
+              </button>
+          </div>
 
           <div className="text-xs font-bold text-slate-500 uppercase mb-3 px-2 tracking-widest">History</div>
           <div className="space-y-2">
             {sessions.map((session) => (
               <div key={session.id} onClick={() => { setCurrentSessionId(session.id); setIsSidebarOpen(false); }} className={`group w-full flex items-center justify-between p-3 rounded-lg text-sm transition-all border cursor-pointer ${currentSessionId === session.id ? 'bg-[#00CCFF]/20 text-white border-[#00CCFF]/50' : 'text-slate-400 hover:text-white hover:bg-white/5 border-transparent'}`}>
                 <span className="truncate flex-1 pr-2">{session.preview || "Untitled Diagnosis"}</span>
-                <button onClick={(e) => deleteSession(e, session.id)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-opacity p-1" title="Delete Record">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                </button>
+                <button onClick={(e) => deleteSession(e, session.id)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-opacity p-1">🗑️</button>
               </div>
             ))}
             {sessions.length === 0 && <div className="px-2 text-slate-600 text-xs italic">No past records found.</div>}
           </div>
         </div>
 
-        <div className="p-4 border-t border-white/10 shrink-0">
-          <button onClick={handleLogout} className="w-full flex items-center gap-2 text-sm text-red-300 hover:text-red-200">Sign Out</button>
+        <div className="p-4 border-t border-white/10 shrink-0 flex justify-between items-center">
+          <button onClick={handleLogout} className="text-sm text-red-300 hover:text-red-200">Sign Out</button>
+          <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-[#00CCFF] transition-colors" title="Settings">
+             ⚙️
+          </button>
         </div>
       </div>
 
@@ -316,9 +379,7 @@ export default function Dashboard() {
           </div>
           {messages.length > 0 && (
             <button onClick={generatePDF} className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 md:px-4 rounded-lg text-xs font-bold flex items-center gap-2 transition-all hover:scale-105">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#00CCFF]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-              <span className="hidden md:inline">Download Report</span>
-              <span className="md:hidden">PDF</span>
+              <span>Download Report</span>
             </button>
           )}
         </div>
@@ -326,71 +387,32 @@ export default function Dashboard() {
         <div className="flex-1 p-4 md:p-8 overflow-y-auto space-y-6 relative custom-scrollbar">
           {!currentSessionId && messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center p-8">
-              <div className="max-w-2xl w-full glass-prism rounded-2xl p-6 md:p-10 text-center border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-                <div className="w-24 h-24 md:w-32 md:h-32 mx-auto mb-6"><Logo animate={true} /></div>
-                <h3 className="text-2xl md:text-3xl font-bold text-white mb-3 capitalize">
-                  Hi {user?.email?.split('@')[0] || "there"}, I'm here to help.
-                </h3>
-                <p className="text-slate-400 text-base md:text-lg leading-relaxed">
-                  Tell me how you're feeling today. To give you the best advice, try to include how long you've felt this way and how strong the pain is.
-                </p>
+              <div className="max-w-2xl w-full glass-prism rounded-2xl p-6 md:p-10 text-center border border-white/10">
+                <div className="w-24 h-24 mx-auto mb-6"><Logo animate={true} /></div>
+                <h3 className="text-3xl font-bold text-white mb-3">Hi, I'm Remedi.</h3>
+                <p className="text-slate-400">Describe your symptoms to begin.</p>
               </div>
             </div>
           )}
 
           {messages.map((msg, index) => (
             <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {msg.role === 'ai' && (
-                <div className="w-8 h-8 md:w-10 md:h-10 mr-3 mt-1 flex-shrink-0 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30"><Logo /></div>
-              )}
-              <div className={`max-w-[85%] p-4 rounded-2xl backdrop-blur-md border ${msg.role === 'user' ? 'bg-[#00CCFF]/10 border-[#00CCFF]/30 text-white rounded-tr-none whitespace-pre-wrap' : 'bg-white/5 border-white/10 text-slate-200 rounded-tl-none'}`}>
-                {msg.role === 'ai' ? (
-                  <ReactMarkdown components={{
-                      strong: ({node, ...props}) => <span className="font-bold text-[#00CCFF]" {...props} />,
-                      ul: ({node, ...props}) => <ul className="list-disc ml-4 space-y-2 mt-2" {...props} />,
-                      li: ({node, ...props}) => <li className="marker:text-[#00CCFF] pl-1" {...props} />,
-                      p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />
-                    }}>{msg.text}</ReactMarkdown>
-                ) : (msg.text)}
+              {msg.role === 'ai' && <div className="w-8 h-8 mr-3 mt-1 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30"><Logo /></div>}
+              <div className={`max-w-[85%] p-4 rounded-2xl border ${msg.role === 'user' ? 'bg-[#00CCFF]/10 border-[#00CCFF]/30 text-white rounded-tr-none' : 'bg-white/5 border-white/10 text-slate-200 rounded-tl-none'}`}>
+                {msg.role === 'ai' ? <ReactMarkdown>{msg.text}</ReactMarkdown> : msg.text}
               </div>
             </div>
           ))}
-          {isLoading && (
-            <div className="flex justify-start">
-               <div className="w-8 h-8 md:w-10 md:h-10 mr-3 mt-1 flex-shrink-0 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30 animate-pulse"><Logo /></div>
-              <div className="bg-white/5 border border-white/10 text-slate-400 p-4 rounded-2xl rounded-tl-none italic text-sm">Analyzing symptoms...</div>
-            </div>
-          )}
+          {isLoading && <div className="text-slate-500 italic ml-12 text-sm">Analyzing...</div>}
           <div ref={messagesEndRef} />
         </div>
 
         <div className="p-4 md:p-6 bg-slate-900 border-t border-white/5 shrink-0 z-20">
-          <div className="max-w-4xl mx-auto relative group">
-            <textarea
-              id="chat-input"
-              rows="1"
-              placeholder="Symptoms:"
-              className="w-full bg-slate-800/80 text-white placeholder-slate-500 rounded-2xl border border-white/10 px-6 py-4 pr-16 focus:outline-none focus:border-[#00CCFF] focus:ring-1 focus:ring-[#00CCFF] transition-all shadow-lg resize-none overflow-hidden leading-tight flex items-center"
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = `${e.target.scrollHeight}px`;
-              }}
-              onKeyDown={handleKeyPress}
-              disabled={isLoading}
-              style={{ minHeight: '56px' }}
-            />
-            
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
-              <button 
-                onClick={handleSend} 
-                disabled={isLoading} 
-                className="p-2 bg-[#00CCFF] rounded-xl text-slate-900 hover:scale-105 transition-all shadow-[0_0_15px_rgba(0,204,255,0.3)] disabled:opacity-50"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-                </svg>
+          <div className="max-w-4xl mx-auto relative">
+            <textarea id="chat-input" rows="1" placeholder="Symptoms:" className="w-full bg-slate-800/80 text-white rounded-2xl border border-white/10 px-6 py-4 pr-16 focus:border-[#00CCFF] focus:outline-none resize-none" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyPress} disabled={isLoading} />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <button onClick={handleSend} disabled={isLoading} className="p-2 bg-[#00CCFF] rounded-xl text-slate-900 hover:scale-105 transition-all">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
               </button>
             </div>
           </div>

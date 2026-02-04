@@ -9,7 +9,6 @@ import Logo from '../components/Logo';
 const RAW_URL = "https://remedi-backend-5eu1.onrender.com";
 
 // 🛡️ SECURITY: Only these emails can access the Doctor Dashboard
-// REPLACE "drawmecorel@gmail.com" WITH YOUR ACTUAL EMAIL IF DIFFERENT
 const AUTHORIZED_DOCTORS = [
   "oniitunu804@gmail.com", 
   "doctor@remedi.ng",
@@ -18,7 +17,7 @@ const AUTHORIZED_DOCTORS = [
 
 export default function DoctorDashboard() {
   const [user, setUser] = useState(null);
-  const [isAuthorized, setIsAuthorized] = useState(false); // <--- New Security State
+  const [isAuthorized, setIsAuthorized] = useState(false); 
   const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
@@ -31,12 +30,10 @@ export default function DoctorDashboard() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         if (currentUser) {
-            // CHECK WHITELIST
             if (AUTHORIZED_DOCTORS.includes(currentUser.email)) {
                 setUser(currentUser);
                 setIsAuthorized(true);
             } else {
-                // User is logged in, BUT is not a doctor.
                 setUser(currentUser);
                 setIsAuthorized(false);
             }
@@ -48,19 +45,14 @@ export default function DoctorDashboard() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Fetch Patients (Only if Authorized)
+  // 2. Fetch Patients 
   useEffect(() => {
     if (!user || !isAuthorized) return; 
-
     const q = query(collection(db, "doctor_requests"), orderBy("createdAt", "desc"));
-    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPatients(list);
-    }, (err) => {
-      console.error(err);
-      setError(err.message);
-    });
+    }, (err) => { setError(err.message); });
     return () => unsubscribe();
   }, [user, isAuthorized]); 
 
@@ -71,19 +63,13 @@ export default function DoctorDashboard() {
         setAiSummary("");
         return;
     }
-
     const msgsRef = collection(db, "users", selectedPatient.userId, "sessions", selectedPatient.sessionId, "messages");
     const q = query(msgsRef, orderBy("createdAt", "asc"));
-    
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const msgs = snapshot.docs.map(doc => doc.data());
         setChatHistory(msgs);
     });
-
-    if (!aiSummary) {
-       generateSummary(selectedPatient); 
-    }
-
+    if (!aiSummary) { generateSummary(selectedPatient); }
     return () => unsubscribe();
   }, [selectedPatient]);
 
@@ -97,9 +83,7 @@ export default function DoctorDashboard() {
       });
       const data = await res.json();
       setAiSummary(data.response);
-    } catch (err) {
-      setAiSummary("Could not generate summary.");
-    }
+    } catch (err) { setAiSummary("Could not generate summary."); }
   };
 
   const deleteTicket = async (e, ticketId) => {
@@ -108,7 +92,7 @@ export default function DoctorDashboard() {
     try {
         await deleteDoc(doc(db, "doctor_requests", ticketId));
         if (selectedPatient?.id === ticketId) setSelectedPatient(null);
-    } catch (err) { alert("Failed to delete: " + err.message); }
+    } catch (err) { alert("Failed to delete."); }
   };
 
   const sendPrescription = async () => {
@@ -119,66 +103,45 @@ export default function DoctorDashboard() {
             text: `👨‍⚕️ **DOCTOR'S NOTE:** ${doctorNote}`,
             createdAt: serverTimestamp()
         });
-
         await updateDoc(doc(db, "doctor_requests", selectedPatient.id), {
             status: "completed",
             resolvedBy: auth.currentUser?.email || "Doctor"
         });
-
         alert("Prescription sent!");
         setDoctorNote(""); 
-    } catch (err) {
-        alert("Failed to send: " + err.message);
-    }
+    } catch (err) { alert("Failed to send."); }
   };
 
-  // --- RENDER: NOT LOGGED IN ---
+  // --- JOIN VIDEO CALL ---
+  const joinVideoCall = () => {
+    if (!selectedPatient) return;
+    const roomLink = `https://meet.jit.si/remedi-secure-${selectedPatient.sessionId}`;
+    window.open(roomLink, '_blank');
+  };
+
   if (!user) {
     return (
         <div className="flex h-screen bg-slate-900 items-center justify-center flex-col text-white">
             <div className="w-20 h-20 mb-6"><Logo /></div>
             <h1 className="text-2xl font-bold mb-2">Medical Staff Access</h1>
-            <p className="text-slate-400 mb-6">Please log in to view the medical console.</p>
-            <button 
-                onClick={() => navigate('/login')}
-                className="bg-[#00CCFF] text-slate-900 px-6 py-3 rounded-xl font-bold hover:scale-105 transition-transform"
-            >
-                Log In
-            </button>
+            <button onClick={() => navigate('/login')} className="bg-[#00CCFF] text-slate-900 px-6 py-3 rounded-xl font-bold hover:scale-105 transition-transform">Log In</button>
         </div>
     );
   }
 
-  // --- RENDER: ACCESS DENIED (Logged in but NOT a Doctor) ---
   if (!isAuthorized) {
     return (
         <div className="flex h-screen bg-slate-900 items-center justify-center flex-col text-white">
             <div className="w-16 h-16 mb-4 opacity-50"><Logo /></div>
             <div className="bg-red-500/10 border border-red-500/50 p-8 rounded-2xl text-center max-w-md">
                 <h1 className="text-3xl font-bold text-red-500 mb-2">⛔ Access Denied</h1>
-                <p className="text-slate-300 mb-4">
-                    The account <strong>{user.email}</strong> is not authorized to access the Medical Staff Portal.
-                </p>
-                <div className="flex flex-col gap-3">
-                    <button 
-                        onClick={() => navigate('/dashboard')}
-                        className="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-xl font-bold transition-all"
-                    >
-                        Return to Patient Dashboard
-                    </button>
-                    <button 
-                        onClick={() => { signOut(auth); navigate('/login'); }}
-                        className="text-red-400 hover:text-red-300 text-sm"
-                    >
-                        Log Out & Switch Account
-                    </button>
-                </div>
+                <p className="text-slate-300 mb-4">The account <strong>{user.email}</strong> is not authorized.</p>
+                <button onClick={() => { signOut(auth); navigate('/login'); }} className="text-red-400 hover:text-red-300 text-sm">Log Out</button>
             </div>
         </div>
     );
   }
 
-  // --- RENDER: AUTHORIZED DASHBOARD ---
   return (
     <div className="flex h-screen bg-slate-900 text-white font-sans">
       {/* Sidebar */}
@@ -188,42 +151,16 @@ export default function DoctorDashboard() {
             <span className="font-bold text-xl tracking-wider">REMEDI <span className="text-[#00CCFF] text-xs">MD</span></span>
         </div>
         
-        {error && (
-            <div className="p-3 bg-red-500/20 border border-red-500 rounded mb-4 text-xs text-red-200">
-                ⚠️ Error: {error}
-            </div>
-        )}
-
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Patient Queue ({patients.length})</h2>
-        
         <div className="space-y-2 flex-1 overflow-y-auto">
             {patients.map(p => (
-                <div 
-                    key={p.id} 
-                    onClick={() => setSelectedPatient(p)} 
-                    className={`group relative p-3 rounded-lg border cursor-pointer transition-all 
-                        ${selectedPatient?.id === p.id ? 'bg-[#00CCFF]/20 border-[#00CCFF]' : 'bg-white/5 border-transparent hover:bg-white/10'}
-                        ${p.status === 'completed' ? 'opacity-70 border-l-4 border-l-green-500' : 'border-l-4 border-l-blue-500'}
-                    `}
-                >
-                    <div className="font-bold text-sm text-white flex justify-between">
-                        <span>{p.userEmail}</span>
-                        {p.status === 'completed' && <span className="text-green-400 text-[10px]">✓ DONE</span>}
-                    </div>
+                <div key={p.id} onClick={() => setSelectedPatient(p)} className={`group relative p-3 rounded-lg border cursor-pointer transition-all ${selectedPatient?.id === p.id ? 'bg-[#00CCFF]/20 border-[#00CCFF]' : 'bg-white/5 border-transparent hover:bg-white/10'} ${p.status === 'completed' ? 'opacity-70 border-l-4 border-l-green-500' : 'border-l-4 border-l-blue-500'}`}>
+                    <div className="font-bold text-sm text-white flex justify-between"><span>{p.userEmail}</span>{p.status === 'completed' && <span className="text-green-400 text-[10px]">✓ DONE</span>}</div>
                     <div className="text-xs text-slate-400 truncate pr-6">{p.preview}</div>
-                    
-                    <button 
-                        onClick={(e) => deleteTicket(e, p.id)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 p-2 transition-all"
-                        title="Remove from list"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
+                    <button onClick={(e) => deleteTicket(e, p.id)} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 p-2">🗑️</button>
                 </div>
             ))}
-            {patients.length === 0 && !error && <p className="text-slate-500 text-sm italic">No patients waiting.</p>}
         </div>
-
         <button onClick={() => { signOut(auth); navigate("/"); }} className="mt-4 w-full py-3 text-red-400 text-sm hover:text-white border-t border-white/10">Log Out</button>
       </div>
 
@@ -232,19 +169,17 @@ export default function DoctorDashboard() {
         {selectedPatient ? (
             <div className="flex-1 flex overflow-hidden">
                 <div className="flex-1 p-6 overflow-y-auto border-r border-white/10 custom-scrollbar">
-                    <h3 className="text-lg font-bold mb-4 text-[#00CCFF]">Patient History</h3>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-bold text-[#00CCFF]">Patient History</h3>
+                        <button onClick={joinVideoCall} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2">
+                            📹 Start Video Call
+                        </button>
+                    </div>
                     <div className="space-y-4">
                         {chatHistory.map((msg, idx) => (
                             <div key={idx} className={`p-4 rounded-xl text-sm max-w-[90%] shadow-sm ${msg.role === 'user' ? 'bg-[#00CCFF]/10 text-white ml-auto border border-[#00CCFF]/30 rounded-tr-none' : 'bg-white/5 text-slate-300 rounded-tl-none border border-white/5'}`}>
                                 <span className="text-[10px] uppercase font-bold opacity-50 block mb-2 tracking-wider">{msg.role}</span>
-                                <ReactMarkdown components={{
-                                    strong: ({node, ...props}) => <span className="font-bold text-[#00CCFF]" {...props} />,
-                                    ul: ({node, ...props}) => <ul className="list-disc ml-4 space-y-2 mt-2" {...props} />,
-                                    li: ({node, ...props}) => <li className="pl-1" {...props} />,
-                                    p: ({node, ...props}) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
-                                }}>
-                                    {msg.text}
-                                </ReactMarkdown>
+                                <ReactMarkdown>{msg.text}</ReactMarkdown>
                             </div>
                         ))}
                     </div>
@@ -252,25 +187,12 @@ export default function DoctorDashboard() {
 
                 <div className="w-96 p-6 bg-slate-800/50 flex flex-col border-l border-white/10">
                     <div className="mb-6 p-4 bg-[#00CCFF]/10 border border-[#00CCFF]/20 rounded-xl">
-                        <h4 className="text-xs font-bold text-[#00CCFF] uppercase mb-2 flex items-center gap-2">
-                             ✨ AI Summary
-                        </h4>
-                        <div className="text-sm text-slate-200 leading-relaxed max-h-40 overflow-y-auto custom-scrollbar">
-                           <ReactMarkdown>{aiSummary}</ReactMarkdown>
-                        </div>
+                        <h4 className="text-xs font-bold text-[#00CCFF] uppercase mb-2">✨ AI Summary</h4>
+                        <div className="text-sm text-slate-200 leading-relaxed max-h-40 overflow-y-auto custom-scrollbar"><ReactMarkdown>{aiSummary}</ReactMarkdown></div>
                     </div>
-
                     <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Prescription / Advice</h4>
-                    <textarea 
-                        className="flex-1 bg-slate-900 border border-white/10 rounded-xl p-4 text-sm focus:border-[#00CCFF] focus:outline-none resize-none mb-4 text-white placeholder-slate-600"
-                        placeholder="Type your medical advice here..."
-                        value={doctorNote}
-                        onChange={(e) => setDoctorNote(e.target.value)}
-                    ></textarea>
-
-                    <button onClick={sendPrescription} className="w-full bg-[#00CCFF] text-slate-900 font-bold py-3 rounded-xl hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,204,255,0.2)]">
-                        Send to Patient
-                    </button>
+                    <textarea className="flex-1 bg-slate-900 border border-white/10 rounded-xl p-4 text-sm focus:border-[#00CCFF] focus:outline-none resize-none mb-4 text-white placeholder-slate-600" placeholder="Type your medical advice here..." value={doctorNote} onChange={(e) => setDoctorNote(e.target.value)}></textarea>
+                    <button onClick={sendPrescription} className="w-full bg-[#00CCFF] text-slate-900 font-bold py-3 rounded-xl hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,204,255,0.2)]">Send to Patient</button>
                 </div>
             </div>
         ) : (
