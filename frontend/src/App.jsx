@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import DoctorDashboard from './pages/DoctorDashboard'; // <--- New Import
+import DoctorDashboard from './pages/DoctorDashboard'; // <--- IMPORT MUST BE HERE
 
 function App() {
   return (
@@ -18,7 +18,7 @@ function App() {
         {/* The Private Dashboard */}
         <Route path="/dashboard" element={<Dashboard />} />
 
-        {/* The Doctor Dashboard (New Route) */}
+        {/* ⚠️ THIS IS THE MISSING LINE THAT CAUSES THE ERROR */}
         <Route path="/doctor" element={<DoctorDashboard />} />
       </Routes>
     </BrowserRouter>
