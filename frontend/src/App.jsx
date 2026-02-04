@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import DoctorDashboard from './pages/DoctorDashboard'; // <--- New Import
 
 function App() {
   return (
@@ -16,6 +17,9 @@ function App() {
         
         {/* The Private Dashboard */}
         <Route path="/dashboard" element={<Dashboard />} />
+
+        {/* The Doctor Dashboard (New Route) */}
+        <Route path="/doctor" element={<DoctorDashboard />} />
       </Routes>
     </BrowserRouter>
   );
