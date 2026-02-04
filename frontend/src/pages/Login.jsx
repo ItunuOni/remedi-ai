@@ -4,6 +4,14 @@ import { auth, googleProvider } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import Logo from '../components/Logo'; 
 
+// 🛡️ SECURITY: DUPLICATE YOUR DOCTOR LIST HERE
+// This ensures the Login page knows exactly where to send you.
+const AUTHORIZED_DOCTORS = [
+  "oniitunu804@gmail.com", 
+  "doctor@remedi.ng",
+  "test@doctor.com" 
+];
+
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true); 
   const [email, setEmail] = useState('');
@@ -11,17 +19,30 @@ export default function Login() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  // --- THE SMART TRAFFIC CONTROLLER ---
+  const redirectUser = (userEmail) => {
+    if (AUTHORIZED_DOCTORS.includes(userEmail)) {
+      console.log("👨‍⚕️ Doctor identified. Redirecting to Medical Portal...");
+      navigate('/doctor'); 
+    } else {
+      console.log("👤 Patient identified. Redirecting to Dashboard...");
+      navigate('/dashboard'); 
+    }
+  };
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setError(''); 
 
     try {
+      let userCredential;
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
+        userCredential = await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        userCredential = await createUserWithEmailAndPassword(auth, email, password);
       }
-      navigate('/dashboard');
+      // CHECK EMAIL AND REDIRECT
+      redirectUser(userCredential.user.email);
     } catch (err) {
       setError(err.message.replace('Firebase:', '').trim());
     }
@@ -29,8 +50,9 @@ export default function Login() {
 
   const handleGoogleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
-      navigate('/dashboard');
+      const result = await signInWithPopup(auth, googleProvider);
+      // CHECK EMAIL AND REDIRECT
+      redirectUser(result.user.email);
     } catch (err) {
       setError("Google Sign-In Failed: " + err.message);
     }
