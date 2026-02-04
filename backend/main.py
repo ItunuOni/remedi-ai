@@ -9,14 +9,14 @@ from dotenv import load_dotenv
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 
-load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# Fallback if specific key is missing, check standard GOOGLE_API_KEY
+if not api_key:
+    api_key = os.getenv("GOOGLE_API_KEY")
 
-app = FastAPI()
 genai.configure(api_key=api_key)
 
 # Use the model
-model = genai.GenerativeModel('models/gemini-2.5-flash')
+model = genai.GenerativeModel('models/gemini-2.0-flash-exp') # Updated to latest stable fast model
 
 app = FastAPI()
 
@@ -32,6 +32,9 @@ app.add_middleware(
 # 3. Define Data Format
 class ChatRequest(BaseModel):
     message: str
+
+class SummaryRequest(BaseModel):
+    history: str
 
 # 4. The Brain
 @app.post("/chat")
@@ -50,6 +53,19 @@ async def chat_endpoint(request: ChatRequest):
         response = model.generate_content(full_prompt)
         return {"response": response.text}
     
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/summarize")
+async def summarize_endpoint(request: SummaryRequest):
+    try:
+        system_instruction = (
+            "You are a Medical Scribe. Summarize the following patient-AI chat history into a professional 'Doctor Handover Note'. "
+            "Include: Chief Complaint, Duration, Severity, and any medications mentioned. Keep it under 100 words."
+        )
+        full_prompt = f"{system_instruction}\n\nHISTORY:\n{request.history}\n\nDoctor Note:"
+        response = model.generate_content(full_prompt)
+        return {"response": response.text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

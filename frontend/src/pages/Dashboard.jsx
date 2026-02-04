@@ -18,24 +18,18 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState([]); 
   const [currentSessionId, setCurrentSessionId] = useState(null); 
   const [isLoading, setIsLoading] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile Sidebar State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading]);
+  useEffect(() => { scrollToBottom(); }, [messages, isLoading]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-      } else {
-        navigate('/');
-      }
+      if (currentUser) { setUser(currentUser); } else { navigate('/'); }
     });
     return () => unsubscribe();
   }, [navigate]);
@@ -44,24 +38,15 @@ export default function Dashboard() {
     if (!user) return;
     const q = query(collection(db, "users", user.uid, "sessions"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const loadedSessions = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const loadedSessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setSessions(loadedSessions);
     });
     return () => unsubscribe();
   }, [user]);
 
   useEffect(() => {
-    if (!user || !currentSessionId) {
-      setMessages([]); 
-      return;
-    }
-    const q = query(
-      collection(db, "users", user.uid, "sessions", currentSessionId, "messages"), 
-      orderBy("createdAt", "asc")
-    );
+    if (!user || !currentSessionId) { setMessages([]); return; }
+    const q = query(collection(db, "users", user.uid, "sessions", currentSessionId, "messages"), orderBy("createdAt", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => doc.data());
       setMessages(msgs);
@@ -69,29 +54,52 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [user, currentSessionId]);
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    navigate('/');
-  };
+  const handleLogout = async () => { await signOut(auth); navigate('/'); };
 
   const startNewSession = () => {
     setCurrentSessionId(null); 
     setMessages([]);
-    setIsSidebarOpen(false); // Close sidebar on mobile when starting new
+    setIsSidebarOpen(false); 
   };
 
   const deleteSession = async (e, sessionId) => {
     e.stopPropagation(); 
     if (!window.confirm("Are you sure you want to delete this diagnosis record? This cannot be undone.")) return;
-
     try {
       await deleteDoc(doc(db, "users", user.uid, "sessions", sessionId));
-      if (currentSessionId === sessionId) {
-        startNewSession();
-      }
-    } catch (err) {
-      console.error("Error deleting session:", err);
-      alert("Failed to delete record.");
+      if (currentSessionId === sessionId) { startNewSession(); }
+    } catch (err) { console.error(err); alert("Failed to delete record."); }
+  };
+
+  // --- NEW FEATURE: REQUEST DOCTOR ---
+  const requestDoctor = async () => {
+    if (!currentSessionId || messages.length === 0) {
+        alert("Please explain your symptoms to the AI first.");
+        return;
+    }
+    if (!window.confirm("This will send your chat history to a licensed specialist for review. Continue?")) return;
+
+    try {
+        // Create a 'Ticket' in a global collection for the doctor to see
+        await addDoc(collection(db, "doctor_requests"), {
+            userId: user.uid,
+            userEmail: user.email,
+            sessionId: currentSessionId,
+            preview: messages[0]?.text || "No preview",
+            status: "pending",
+            createdAt: serverTimestamp()
+        });
+        
+        // Add a system message to the chat
+        await addDoc(collection(db, "users", user.uid, "sessions", currentSessionId, "messages"), {
+            role: "ai",
+            text: "✅ **REQUEST SENT:** A specialist has been notified. You will receive a response here shortly.",
+            createdAt: serverTimestamp()
+        });
+        alert("Request sent successfully!");
+    } catch (error) {
+        console.error(error);
+        alert("Failed to send request.");
     }
   };
 
@@ -114,10 +122,7 @@ export default function Dashboard() {
     doc.line(20, 60, 190, 60);
     let y = 70; 
     messages.forEach(msg => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
+      if (y > 270) { doc.addPage(); y = 20; }
       const isAI = msg.role === 'ai';
       const role = isAI ? "REMEDI AI ANALYSIS:" : "PATIENT SYMPTOMS:";
       const color = isAI ? [0, 100, 150] : [80, 80, 80];
@@ -187,10 +192,7 @@ export default function Dashboard() {
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   return (
@@ -200,7 +202,6 @@ export default function Dashboard() {
         <div className="blob-yellow bottom-[-20%] right-[-10%] opacity-20"></div>
       </div>
 
-      {/* --- MOBILE HEADER (FIXED: z-40 so sidebar covers it) --- */}
       <div className="md:hidden fixed top-0 left-0 w-full h-16 bg-slate-900/90 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-4 z-40">
         <div className="flex items-center gap-2">
            <div className="w-8 h-8"><Logo /></div>
@@ -211,7 +212,6 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* --- SIDEBAR (FIXED: Added bg-slate-900 for solid background on mobile) --- */}
       <div className={`
         fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 md:bg-transparent glass-prism border-r border-white/10 flex flex-col h-full 
         transform transition-transform duration-300 ease-in-out
@@ -245,6 +245,10 @@ export default function Dashboard() {
             </button>
           </div>
 
+          <button onClick={requestDoctor} className="w-full p-3 rounded-xl bg-[#00CCFF] hover:bg-[#00bfe6] text-slate-900 font-bold text-sm mb-8 flex items-center justify-center gap-2 transition-all shadow-lg hover:scale-105">
+             <span>👨‍⚕️</span> Verify with Specialist
+          </button>
+
           <div className="text-xs font-bold text-slate-500 uppercase mb-3 px-2 tracking-widest">History</div>
           <div className="space-y-2">
             {sessions.map((session) => (
@@ -264,15 +268,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* --- OVERLAY --- */}
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
-          onClick={() => setIsSidebarOpen(false)}
-        ></div>
-      )}
+      {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>}
 
-      {/* --- MAIN AREA --- */}
       <div className="flex-1 flex flex-col h-full min-w-0 relative z-10 pt-16 md:pt-0">
         <div className="h-20 min-h-[5rem] border-b border-white/5 flex items-center justify-between px-4 md:px-8 bg-slate-900/50 backdrop-blur-sm shrink-0">
           <div>
