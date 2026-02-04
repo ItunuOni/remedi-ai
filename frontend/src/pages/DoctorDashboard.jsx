@@ -34,8 +34,7 @@ export default function DoctorDashboard() {
   useEffect(() => {
     if (!user) return; 
 
-    // MODIFIED: We removed 'where status == pending'. Now it shows EVERYTHING sorted by newest.
-    // This allows the doctor to see past patients until they delete them.
+    // MODIFIED: Shows EVERYTHING sorted by newest.
     const q = query(collection(db, "doctor_requests"), orderBy("createdAt", "desc"));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -154,6 +153,7 @@ export default function DoctorDashboard() {
             </div>
         )}
 
+        {/* UPDATED TITLE */}
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Patient Queue ({patients.length})</h2>
         
         <div className="space-y-2 flex-1 overflow-y-auto">
@@ -198,6 +198,7 @@ export default function DoctorDashboard() {
                         {chatHistory.map((msg, idx) => (
                             <div key={idx} className={`p-4 rounded-xl text-sm max-w-[90%] shadow-sm ${msg.role === 'user' ? 'bg-[#00CCFF]/10 text-white ml-auto border border-[#00CCFF]/30 rounded-tr-none' : 'bg-white/5 text-slate-300 rounded-tl-none border border-white/5'}`}>
                                 <span className="text-[10px] uppercase font-bold opacity-50 block mb-2 tracking-wider">{msg.role}</span>
+                                {/* MARKDOWN RENDERER */}
                                 <ReactMarkdown components={{
                                     strong: ({node, ...props}) => <span className="font-bold text-[#00CCFF]" {...props} />,
                                     ul: ({node, ...props}) => <ul className="list-disc ml-4 space-y-2 mt-2" {...props} />,
