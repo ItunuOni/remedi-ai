@@ -11,8 +11,8 @@ const RAW_URL = "https://remedi-backend-5eu1.onrender.com";
 // 🛡️ SECURITY: Only these emails can access the Doctor Dashboard
 const AUTHORIZED_DOCTORS = [
   "oniitunu804@gmail.com", 
-  "doctor@remedi.ng",
-  "test@doctor.com" 
+  "trenztech62@gmail.com",
+  "lekefrnk@gmail.com"
 ];
 
 export default function DoctorDashboard() {
