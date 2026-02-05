@@ -14,12 +14,8 @@ api_key = os.getenv("GEMINI_API_KEY")
 email_user = os.getenv("EMAIL_USER")
 email_pass = os.getenv("EMAIL_PASS")
 
-# Fallback for API Key
 if not api_key:
     api_key = os.getenv("GOOGLE_API_KEY")
-
-if not api_key:
-    print("CRITICAL WARNING: GEMINI_API_KEY is missing!")
 
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('models/gemini-2.0-flash') 
@@ -77,10 +73,10 @@ async def summarize_endpoint(request: SummaryRequest):
         print(f"SUMMARY ERROR: {str(e)}") 
         raise HTTPException(status_code=500, detail=str(e))
 
-# 5. EMERGENCY EMAIL ENGINE (UPDATED: SSL PORT 465)
+# 5. EMERGENCY EMAIL ENGINE (Port 587 with Explicit TLS)
 @app.post("/emergency-email")
 async def send_emergency_email(request: EmergencyRequest):
-    print(f"Attempting to send email via SSL (Port 465) from: {email_user} to {request.hospital_email}")
+    print(f"Attempting to send email via Port 587 (Standard Submission) from: {email_user} to {request.hospital_email}")
 
     if not email_user or not email_pass:
         print("ERROR: Email Credentials missing on Server.")
@@ -107,17 +103,20 @@ async def send_emergency_email(request: EmergencyRequest):
         """
         msg.attach(MIMEText(body, 'plain'))
 
-        # FIREWALL BYPASS: Use SMTP_SSL on Port 465
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        # TRY STANDARD PORT 587 (Most widely supported)
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.ehlo() # Identify ourselves
+        server.starttls() # Secure the connection
+        server.ehlo() # Re-identify as encrypted
         server.login(email_user, email_pass)
         server.sendmail(email_user, request.hospital_email, msg.as_string())
         server.quit()
 
-        print("Email sent successfully via SSL!")
+        print("Email sent successfully!")
         return {"status": "success", "message": "Alert Dispatched"}
 
     except Exception as e:
-        print(f"EMAIL FAILED (SSL): {str(e)}")
+        print(f"EMAIL FAILED: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Email Failure: {str(e)}")
 
 @app.get("/")
