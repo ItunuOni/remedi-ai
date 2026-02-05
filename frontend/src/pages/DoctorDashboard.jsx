@@ -155,9 +155,13 @@ export default function DoctorDashboard() {
         <div className="space-y-2 flex-1 overflow-y-auto">
             {patients.map(p => (
                 <div key={p.id} onClick={() => setSelectedPatient(p)} className={`group relative p-3 rounded-lg border cursor-pointer transition-all ${selectedPatient?.id === p.id ? 'bg-[#00CCFF]/20 border-[#00CCFF]' : 'bg-white/5 border-transparent hover:bg-white/10'} ${p.status === 'completed' ? 'opacity-70 border-l-4 border-l-green-500' : 'border-l-4 border-l-blue-500'}`}>
-                    <div className="font-bold text-sm text-white flex justify-between"><span>{p.userEmail}</span>{p.status === 'completed' && <span className="text-green-400 text-[10px]">✓ DONE</span>}</div>
+                    <div className="font-bold text-sm text-white flex justify-between items-center h-5">
+                        <span className="truncate pr-2">{p.userEmail}</span>
+                        {/* FIXED: Added 'group-hover:opacity-0' to hide text when Trash Can appears */}
+                        {p.status === 'completed' && <span className="text-green-400 text-[10px] whitespace-nowrap group-hover:opacity-0 transition-opacity duration-200">✓ DONE</span>}
+                    </div>
                     <div className="text-xs text-slate-400 truncate pr-6">{p.preview}</div>
-                    <button onClick={(e) => deleteTicket(e, p.id)} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 p-2">🗑️</button>
+                    <button onClick={(e) => deleteTicket(e, p.id)} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 p-2 transition-all duration-200">🗑️</button>
                 </div>
             ))}
         </div>

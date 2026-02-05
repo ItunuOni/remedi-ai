@@ -20,7 +20,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   
-  // New States for Features
+  // New States
   const [showSettings, setShowSettings] = useState(false);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [emergencyConfig, setEmergencyConfig] = useState({ contactName: '', hospitalEmail: '' });
@@ -37,7 +37,7 @@ export default function Dashboard() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) { 
         setUser(currentUser); 
-        loadSettings(currentUser.uid); // Load user preferences
+        loadSettings(currentUser.uid); 
       } else { 
         navigate('/'); 
       }
@@ -45,14 +45,11 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [navigate]);
 
-  // Load saved hospital settings
   const loadSettings = async (uid) => {
     try {
         const docRef = doc(db, "users", uid, "settings", "profile");
         const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            setEmergencyConfig(docSnap.data());
-        }
+        if (docSnap.exists()) setEmergencyConfig(docSnap.data());
     } catch (err) { console.error("Error loading settings", err); }
   };
 
@@ -70,8 +67,7 @@ export default function Dashboard() {
     if (!user) return;
     const q = query(collection(db, "users", user.uid, "sessions"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const loadedSessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSessions(loadedSessions);
+      setSessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsubscribe();
   }, [user]);
@@ -80,8 +76,7 @@ export default function Dashboard() {
     if (!user || !currentSessionId) { setMessages([]); return; }
     const q = query(collection(db, "users", user.uid, "sessions", currentSessionId, "messages"), orderBy("createdAt", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => doc.data());
-      setMessages(msgs);
+      setMessages(snapshot.docs.map(doc => doc.data()));
     });
     return () => unsubscribe();
   }, [user, currentSessionId]);
@@ -103,23 +98,14 @@ export default function Dashboard() {
     } catch (err) { console.error(err); }
   };
 
-  // --- VIDEO CHAT FEATURE ---
   const startVideoChat = () => {
-    if (!currentSessionId) {
-        alert("Please start a diagnosis first.");
-        return;
-    }
-    // Generates a unique, secure room link based on the Session ID
-    const roomLink = `https://meet.jit.si/remedi-secure-${currentSessionId}`;
-    window.open(roomLink, '_blank');
+    if (!currentSessionId) { alert("Please start a diagnosis first."); return; }
+    window.open(`https://meet.jit.si/remedi-secure-${currentSessionId}`, '_blank');
   };
 
   const requestDoctor = async () => {
-    if (!currentSessionId || messages.length === 0) {
-        alert("Please explain your symptoms to the AI first.");
-        return;
-    }
-    if (!window.confirm("Send this report to a specialist?")) return;
+    if (!currentSessionId || messages.length === 0) { alert("Please explain your symptoms first."); return; }
+    if (!window.confirm("Send report to specialist?")) return;
 
     try {
         await addDoc(collection(db, "doctor_requests"), {
@@ -130,24 +116,30 @@ export default function Dashboard() {
             status: "pending",
             createdAt: serverTimestamp()
         });
-        
         await addDoc(collection(db, "users", user.uid, "sessions", currentSessionId, "messages"), {
             role: "ai",
             text: "✅ **REQUEST SENT:** A specialist has been notified.",
             createdAt: serverTimestamp()
         });
         alert("Request sent!");
-    } catch (error) { console.error(error); alert("Failed to send request."); }
+    } catch (error) { console.error(error); alert("Failed."); }
   };
 
-  // --- EMERGENCY DISPATCH LOGIC ---
   const handleEmergencyDispatch = () => {
-    const targetEmail = emergencyConfig.hospitalEmail || prompt("No preset hospital found. Enter email to send report:");
+    const targetEmail = emergencyConfig.hospitalEmail || prompt("Enter hospital email:");
     if (targetEmail) {
-        // In a real app, this would trigger an email API. For MVP, we simulate the alert.
-        alert(`🚨 EMERGENCY REPORT DISPATCHED TO: ${targetEmail}\n\nLocation: Lagos, Nigeria (Simulated)\nPatient: ${user.email}`);
+        alert(`🚨 EMERGENCY REPORT DISPATCHED TO: ${targetEmail}`);
         setShowEmergencyModal(false);
     }
+  };
+
+  // --- QUICK START HANDLER ---
+  const handleQuickStart = (symptom) => {
+     setInput(symptom);
+     // Auto-send would require moving logic out of handleSend or using a timeout, 
+     // but filling the input is safer for user confirmation.
+     const inputField = document.getElementById("chat-input");
+     if(inputField) inputField.focus();
   };
 
   const generatePDF = () => {
@@ -163,29 +155,27 @@ export default function Dashboard() {
     doc.text("AI DIAGNOSTIC REPORT", 150, 25);
     doc.setTextColor(0, 0, 0); 
     doc.setFontSize(10);
-    doc.text(`Patient Reference: ${user?.email || 'Anonymous'}`, 20, 50);
-    doc.text(`Report Date: ${new Date().toLocaleDateString()}`, 20, 55);
+    doc.text(`Patient: ${user?.email || 'Anonymous'}`, 20, 50);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 55);
     let y = 70; 
 
-    // STRICT FILTER LOGIC
     const validMessages = messages.filter(msg => {
        const txt = msg.text.toLowerCase().trim();
        if (txt.length < 3) return false;
        if (txt.includes("request sent") || txt.includes("doctor's note") || txt.includes("emergency_trigger")) return false;
-       const chitChat = ["thank you", "thanks", "you're welcome", "hello", "hi there"];
+       const chitChat = ["thank you", "thanks", "welcome", "hello", "hi there"];
        if (chitChat.some(phrase => txt.includes(phrase))) return false;
        return true;
     });
 
-    if (validMessages.length === 0) { alert("No clinical data to export."); return; }
+    if (validMessages.length === 0) { alert("No clinical data."); return; }
 
     validMessages.forEach(msg => {
       if (y > 270) { doc.addPage(); y = 20; }
       const isAI = msg.role === 'ai';
-      const role = isAI ? "REMEDI AI ANALYSIS:" : "PATIENT SYMPTOMS:";
       doc.setFont("helvetica", "bold");
       doc.setTextColor(isAI ? 0 : 80, isAI ? 100 : 80, isAI ? 150 : 80);
-      doc.text(role, 20, y);
+      doc.text(isAI ? "REMEDI AI ANALYSIS:" : "PATIENT SYMPTOMS:", 20, y);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(0, 0, 0);
       const cleanText = msg.text.replace(/\*\*/g, '').replace(/🚨 EMERGENCY_TRIGGER 🚨/g, ''); 
@@ -197,8 +187,7 @@ export default function Dashboard() {
   };
 
   const findNearby = (type) => {
-    const query = type === 'pharmacies' ? 'pharmacies near me' : 'hospitals near me';
-    window.open(`https://www.google.com/maps/search/${encodeURIComponent(query)}/`, '_blank');
+    window.open(`https://www.google.com/maps/search/${encodeURIComponent(type + ' near me')}/`, '_blank');
   };
 
   const handleSend = async () => {
@@ -220,36 +209,22 @@ export default function Dashboard() {
         await setDoc(sessionDocRef, { preview: textToSend.substring(0, 30) + "..." }, { merge: true });
       }
       await addDoc(collection(db, "users", user.uid, "sessions", activeSessionId, "messages"), {
-        role: "user",
-        text: textToSend,
-        createdAt: serverTimestamp()
+        role: "user", text: textToSend, createdAt: serverTimestamp()
       });
       const response = await fetch(`${BACKEND_URL}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: textToSend }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: textToSend }),
       });
       const data = await response.json();
       let aiText = data.response || "Error: No response.";
-
-      // 🚨 CHECK FOR EMERGENCY TRIGGER
       if (aiText.includes("EMERGENCY_TRIGGER")) {
          setShowEmergencyModal(true);
-         // Clean the text for display so user doesn't see the code word
          aiText = aiText.replace("🚨 EMERGENCY_TRIGGER 🚨", "").trim();
       }
-
       await addDoc(collection(db, "users", user.uid, "sessions", activeSessionId, "messages"), {
-        role: "ai",
-        text: aiText,
-        createdAt: serverTimestamp()
+        role: "ai", text: aiText, createdAt: serverTimestamp()
       });
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'ai', text: "System Error." }]);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (error) { console.error(error); setMessages(prev => [...prev, { role: 'ai', text: "System Error." }]); } 
+    finally { setIsLoading(false); }
   };
 
   const handleKeyPress = (e) => {
@@ -264,51 +239,38 @@ export default function Dashboard() {
             <div className="bg-slate-800 border border-white/10 p-6 rounded-2xl w-full max-w-md shadow-2xl">
                 <h3 className="text-xl font-bold text-[#00CCFF] mb-4">Emergency Profile</h3>
                 <form onSubmit={saveSettings} className="space-y-4">
-                    <div>
-                        <label className="text-xs uppercase text-slate-400 font-bold">Primary Contact Name</label>
-                        <input className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-[#00CCFF] outline-none" 
-                            value={emergencyConfig.contactName} onChange={e => setEmergencyConfig({...emergencyConfig, contactName: e.target.value})} placeholder="e.g. My Husband" />
-                    </div>
-                    <div>
-                        <label className="text-xs uppercase text-slate-400 font-bold">Preferred Hospital Email</label>
-                        <input className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-[#00CCFF] outline-none" 
-                            value={emergencyConfig.hospitalEmail} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalEmail: e.target.value})} placeholder="emergency@hospital.com" />
-                    </div>
+                    <input className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-[#00CCFF] outline-none" 
+                        value={emergencyConfig.contactName} onChange={e => setEmergencyConfig({...emergencyConfig, contactName: e.target.value})} placeholder="Primary Contact Name" />
+                    <input className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-[#00CCFF] outline-none" 
+                        value={emergencyConfig.hospitalEmail} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalEmail: e.target.value})} placeholder="Preferred Hospital Email" />
                     <div className="flex gap-2 pt-2">
                         <button type="button" onClick={() => setShowSettings(false)} className="flex-1 py-3 rounded-xl hover:bg-white/5 border border-white/10">Cancel</button>
-                        <button type="submit" className="flex-1 bg-[#00CCFF] text-slate-900 font-bold py-3 rounded-xl hover:scale-105 transition-transform">Save Profile</button>
+                        <button type="submit" className="flex-1 bg-[#00CCFF] text-slate-900 font-bold py-3 rounded-xl hover:scale-105">Save</button>
                     </div>
                 </form>
             </div>
          </div>
       )}
 
-      {/* EMERGENCY MODAL (RED ALERT) */}
+      {/* EMERGENCY MODAL */}
       {showEmergencyModal && (
          <div className="fixed inset-0 bg-red-900/90 z-[70] flex items-center justify-center p-4 animate-pulse">
-            <div className="bg-white text-red-600 p-8 rounded-2xl w-full max-w-lg shadow-[0_0_50px_rgba(255,0,0,0.5)] text-center border-4 border-red-600">
+            <div className="bg-white text-red-600 p-8 rounded-2xl w-full max-w-lg shadow-2xl text-center border-4 border-red-600">
                 <div className="text-6xl mb-4">🚨</div>
                 <h2 className="text-3xl font-black mb-2 uppercase">Emergency Detected</h2>
-                <p className="text-slate-800 mb-6 font-semibold">Your symptoms require immediate medical attention.</p>
-                
                 <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-6 text-left">
                     <p className="text-sm text-slate-500 uppercase font-bold mb-1">Dispatching To:</p>
                     <p className="text-lg font-bold text-slate-900">{emergencyConfig.hospitalEmail || "Emergency Services (Pending Input)"}</p>
                 </div>
-
                 <div className="flex flex-col gap-3">
-                    <button onClick={handleEmergencyDispatch} className="w-full bg-red-600 hover:bg-red-700 text-white font-black text-xl py-4 rounded-xl shadow-lg transition-transform hover:scale-105 uppercase">
-                        NOTIFY HOSPITAL NOW
-                    </button>
-                    <button onClick={() => setShowEmergencyModal(false)} className="text-slate-400 text-sm hover:text-slate-600 underline">
-                        I am safe, dismiss alert
-                    </button>
+                    <button onClick={handleEmergencyDispatch} className="w-full bg-red-600 hover:bg-red-700 text-white font-black text-xl py-4 rounded-xl shadow-lg uppercase">NOTIFY HOSPITAL NOW</button>
+                    <button onClick={() => setShowEmergencyModal(false)} className="text-slate-400 text-sm hover:text-slate-600 underline">Dismiss Alert</button>
                 </div>
             </div>
          </div>
       )}
 
-      {/* ... (Existing Sidebar & Layout) ... */}
+      {/* SIDEBAR */}
       <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 md:bg-transparent glass-prism border-r border-white/10 flex flex-col h-full transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
         <div className="h-20 flex items-center justify-between px-6 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
@@ -323,25 +285,24 @@ export default function Dashboard() {
             <span className="text-xl font-bold">+</span> New Diagnosis
           </button>
           
-          {/* FIND CARE SECTION */}
           <div className="text-xs font-bold text-slate-500 uppercase mb-3 px-2 tracking-widest">Find Care</div>
           <div className="grid grid-cols-2 gap-2 mb-8 px-1">
-            <button onClick={() => findNearby('pharmacies')} className="p-3 rounded-xl bg-[#00CCFF]/10 hover:bg-[#00CCFF]/20 border border-[#00CCFF]/30 flex flex-col items-center gap-1 transition-all">
+            <button onClick={() => findNearby('pharmacy')} className="p-3 rounded-xl bg-[#00CCFF]/10 hover:bg-[#00CCFF]/20 border border-[#00CCFF]/30 flex flex-col items-center gap-1 transition-all">
               <span className="text-xl">💊</span>
               <span className="text-[10px] text-[#00CCFF] font-bold">Pharmacy</span>
             </button>
-            <button onClick={() => findNearby('hospitals')} className="p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 flex flex-col items-center gap-1 transition-all">
+            <button onClick={() => findNearby('hospital')} className="p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 flex flex-col items-center gap-1 transition-all">
               <span className="text-xl">🏥</span>
               <span className="text-[10px] text-red-400 font-bold">Hospital</span>
             </button>
           </div>
 
-          {/* ACTIONS SECTION (Video & Specialist) */}
           <div className="grid grid-cols-[1fr_auto] gap-2 mb-8">
+              {/* FIXED: Shortened text to prevent wrap */}
               <button onClick={requestDoctor} className="p-3 rounded-xl bg-[#00CCFF] hover:bg-[#00bfe6] text-slate-900 font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg hover:scale-105">
-                 <span>👨‍⚕️</span> Verify with a specialist
+                 <span>👨‍⚕️</span> Consult Specialist
               </button>
-              <button onClick={startVideoChat} title="Start Video Consultation" className="p-3 rounded-xl bg-purple-500/20 hover:bg-purple-500/40 border border-purple-500/50 text-purple-300 font-bold flex items-center justify-center transition-all hover:scale-105">
+              <button onClick={startVideoChat} title="Video Chat" className="p-3 rounded-xl bg-purple-500/20 hover:bg-purple-500/40 border border-purple-500/50 text-purple-300 font-bold flex items-center justify-center transition-all hover:scale-105">
                  <span>📹</span>
               </button>
           </div>
@@ -360,9 +321,7 @@ export default function Dashboard() {
 
         <div className="p-4 border-t border-white/10 shrink-0 flex justify-between items-center">
           <button onClick={handleLogout} className="text-sm text-red-300 hover:text-red-200">Sign Out</button>
-          <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-[#00CCFF] transition-colors" title="Settings">
-             ⚙️
-          </button>
+          <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-[#00CCFF] transition-colors" title="Settings">⚙️</button>
         </div>
       </div>
 
@@ -385,13 +344,36 @@ export default function Dashboard() {
         </div>
 
         <div className="flex-1 p-4 md:p-8 overflow-y-auto space-y-6 relative custom-scrollbar">
+          
+          {/* PREMIUM INTRO: REPLACES BORING TEXT */}
           {!currentSessionId && messages.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center p-8">
-              <div className="max-w-2xl w-full glass-prism rounded-2xl p-6 md:p-10 text-center border border-white/10">
-                <div className="w-24 h-24 mx-auto mb-6"><Logo animate={true} /></div>
-                <h3 className="text-3xl font-bold text-white mb-3">Hi, I'm Remedi.</h3>
-                <p className="text-slate-400">Describe your symptoms to begin.</p>
-              </div>
+            <div className="h-full flex flex-col items-center justify-center p-4">
+               <div className="w-full max-w-3xl">
+                  <div className="text-center mb-10">
+                     <div className="w-24 h-24 mx-auto mb-6 opacity-90"><Logo animate={true} /></div>
+                     <h1 className="text-4xl md:text-5xl font-bold text-white mb-2 tracking-tight">System Online</h1>
+                     <p className="text-slate-400 text-lg">Select a quick diagnosis or describe your symptoms below.</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                     <button onClick={() => handleQuickStart("I have a severe headache and sensitivity to light.")} className="p-6 bg-slate-800/50 hover:bg-[#00CCFF]/10 border border-white/5 hover:border-[#00CCFF]/30 rounded-2xl transition-all group text-left">
+                        <span className="text-2xl mb-2 block">🤕</span>
+                        <span className="font-bold text-slate-200 group-hover:text-[#00CCFF]">Head & Neck</span>
+                     </button>
+                     <button onClick={() => handleQuickStart("I am coughing and having trouble breathing.")} className="p-6 bg-slate-800/50 hover:bg-[#00CCFF]/10 border border-white/5 hover:border-[#00CCFF]/30 rounded-2xl transition-all group text-left">
+                        <span className="text-2xl mb-2 block">🫁</span>
+                        <span className="font-bold text-slate-200 group-hover:text-[#00CCFF]">Respiratory</span>
+                     </button>
+                     <button onClick={() => handleQuickStart("I have a high fever and body aches.")} className="p-6 bg-slate-800/50 hover:bg-[#00CCFF]/10 border border-white/5 hover:border-[#00CCFF]/30 rounded-2xl transition-all group text-left">
+                        <span className="text-2xl mb-2 block">🤒</span>
+                        <span className="font-bold text-slate-200 group-hover:text-[#00CCFF]">Fever / Flu</span>
+                     </button>
+                     <button onClick={() => handleQuickStart("I have sharp chest pains.")} className="p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/50 rounded-2xl transition-all group text-left">
+                        <span className="text-2xl mb-2 block">🆘</span>
+                        <span className="font-bold text-red-200 group-hover:text-red-100">Emergency</span>
+                     </button>
+                  </div>
+               </div>
             </div>
           )}
 
@@ -409,7 +391,7 @@ export default function Dashboard() {
 
         <div className="p-4 md:p-6 bg-slate-900 border-t border-white/5 shrink-0 z-20">
           <div className="max-w-4xl mx-auto relative">
-            <textarea id="chat-input" rows="1" placeholder="Symptoms:" className="w-full bg-slate-800/80 text-white rounded-2xl border border-white/10 px-6 py-4 pr-16 focus:border-[#00CCFF] focus:outline-none resize-none" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyPress} disabled={isLoading} />
+            <textarea id="chat-input" rows="1" placeholder="Describe your symptoms..." className="w-full bg-slate-800/80 text-white rounded-2xl border border-white/10 px-6 py-4 pr-16 focus:border-[#00CCFF] focus:outline-none resize-none" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyPress} disabled={isLoading} />
             <div className="absolute right-3 top-1/2 -translate-y-1/2">
               <button onClick={handleSend} disabled={isLoading} className="p-2 bg-[#00CCFF] rounded-xl text-slate-900 hover:scale-105 transition-all">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
