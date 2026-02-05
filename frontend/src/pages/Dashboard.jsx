@@ -36,6 +36,9 @@ export default function Dashboard() {
     homeAddress: '',       
     medicalConditions: '' 
   });
+
+  // NEW: Tracks the specific symptom that triggered the alarm (e.g. "I can't breathe")
+  const [activeEmergencySymptom, setActiveEmergencySymptom] = useState("");
   
   const messagesEndRef = useRef(null);
 
@@ -137,7 +140,7 @@ export default function Dashboard() {
     } catch (error) { console.error(error); alert("Failed."); }
   };
 
-  // --- PRODUCTION EMERGENCY DISPATCH (Clean & Fast) ---
+  // --- PRODUCTION EMERGENCY DISPATCH (Silent & Detailed) ---
   const handleEmergencyDispatch = async () => {
     const targetEmail = emergencyConfig.hospitalEmail;
     
@@ -150,6 +153,13 @@ export default function Dashboard() {
 
     setDispatchStatus("sending"); // Triggers the loading spinner
 
+    // Combine the user's specific complaint with their medical history
+    const symptomDetail = activeEmergencySymptom 
+        ? `CRITICAL COMPLAINT: "${activeEmergencySymptom}"` 
+        : "CRITICAL SYMPTOMS REPORTED";
+
+    const fullConditionReport = `${symptomDetail}\n\nMEDICAL HISTORY: ${emergencyConfig.medicalConditions || "None Listed"}`;
+
     try {
         const payload = {
             patient_email: user.email,
@@ -157,7 +167,7 @@ export default function Dashboard() {
             contact_name: emergencyConfig.contactName || "Unknown Contact",
             contact_phone: emergencyConfig.contactPhone || "No Phone",
             home_address: emergencyConfig.homeAddress || "Address Not Provided",
-            medical_conditions: emergencyConfig.medicalConditions || "None Listed"
+            medical_conditions: fullConditionReport // Sends both current pain and history
         };
 
         const response = await fetch(`${RAW_URL}/emergency-email`, {
@@ -168,7 +178,7 @@ export default function Dashboard() {
 
         if (response.ok) {
             setDispatchStatus("success");
-            // The ONLY message the user will see on success
+            // The ONLY message the user sees
             alert("✅ EMERGENCY ALERT SENT! Help is on the way. Sit tight!");
             setShowEmergencyModal(false);
         } else {
@@ -178,8 +188,8 @@ export default function Dashboard() {
     } catch (err) {
         console.error("Dispatch Failed:", err);
         
-        // Silent Fallback to Mail Client (Just in case server is down)
-        const mailtoLink = `mailto:${targetEmail}?subject=URGENT MEDICAL ALERT&body=Emergency for ${user.email}`;
+        // Silent Fallback to Mail Client
+        const mailtoLink = `mailto:${targetEmail}?subject=URGENT MEDICAL ALERT&body=Emergency for ${user.email}. Symptom: ${activeEmergencySymptom}`;
         window.location.href = mailtoLink; 
         
         setDispatchStatus("success");
@@ -251,6 +261,10 @@ export default function Dashboard() {
   const handleSend = async () => {
     if (!input.trim() || !user) return;
     const textToSend = input;
+    
+    // CAPTURE THE SYMPTOM FOR EMERGENCY CONTEXT
+    setActiveEmergencySymptom(textToSend); 
+
     setInput('');
     setIsLoading(true);
     let activeSessionId = currentSessionId;
@@ -313,7 +327,7 @@ export default function Dashboard() {
                     </div>
 
                     <div className="space-y-3">
-                        <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Primary Contact</label>
+                        <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Primary Contact (Next of Kin)</label>
                         <div className="grid grid-cols-2 gap-4">
                             <input className="bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
                                 value={emergencyConfig.contactName} onChange={e => setEmergencyConfig({...emergencyConfig, contactName: e.target.value})} placeholder="Full Name" required />
@@ -367,7 +381,7 @@ export default function Dashboard() {
 
       {/* SIDEBAR (Responsive) */}
       <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 md:bg-transparent glass-prism border-r border-white/10 flex flex-col h-full transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
-        <div className="h-16 md:h-20 flex items-center justify-between px-6 border-b border-white/10 shrink-0">
+        <div className="h-20 flex items-center justify-between px-6 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 flex-shrink-0"><Logo /></div>
             <span className="text-white font-bold tracking-wider text-xl">REMEDI</span>
@@ -485,7 +499,8 @@ export default function Dashboard() {
 
           {messages.map((msg, index) => (
             <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {msg.role === 'ai' && <div className="w-8 h-8 mr-3 mt-1 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30 shrink-0"><Logo /></div>}
+              {/* FIXED: Increased Logo Size here */}
+              {msg.role === 'ai' && <div className="w-10 h-10 mr-3 mt-1 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30 shrink-0"><Logo /></div>}
               <div className={`max-w-[85%] p-4 rounded-2xl border ${msg.role === 'user' ? 'bg-[#00CCFF]/10 border-[#00CCFF]/30 text-white rounded-tr-none' : 'bg-white/5 border-white/10 text-slate-200 rounded-tl-none'} text-sm md:text-base leading-relaxed`}>
                 {msg.role === 'ai' ? (
                   <ReactMarkdown 
