@@ -24,12 +24,17 @@ export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   
+  // Status: idle | sending | success
+  const [dispatchStatus, setDispatchStatus] = useState("idle"); 
+
   // Emergency Profile State
   const [emergencyConfig, setEmergencyConfig] = useState({ 
     contactName: '', 
     contactPhone: '',
     hospitalName: '',
-    hospitalEmail: '' 
+    hospitalEmail: '',
+    homeAddress: '',       
+    medicalConditions: '' 
   });
   
   const messagesEndRef = useRef(null);
@@ -132,19 +137,66 @@ export default function Dashboard() {
     } catch (error) { console.error(error); alert("Failed."); }
   };
 
-  const handleEmergencyDispatch = () => {
+  // --- LOUD DEBUGGING VERSION ---
+  const handleEmergencyDispatch = async () => {
+    alert("STEP 1: Button Clicked. Checking Config..."); // DEBUG ALERT
+
     const targetEmail = emergencyConfig.hospitalEmail;
-    const targetPhone = emergencyConfig.contactPhone;
     
-    if (!targetEmail && !targetPhone) {
-        alert("⚠️ No emergency contact found! Please go to Settings ⚙️ to configure your Emergency Profile.");
+    if (!targetEmail) {
+        alert("⚠️ STOP: No hospital email found in settings.");
         setShowEmergencyModal(false);
         setShowSettings(true); 
         return;
     }
 
-    alert(`🚨 EMERGENCY PROTOCOL INITIATED\n\nDispatching Report to:\n🏥 Hospital: ${emergencyConfig.hospitalName || "Unknown"}\n📧 Email: ${targetEmail || "N/A"}\n📞 Contact: ${targetPhone || "N/A"}`);
-    setShowEmergencyModal(false);
+    alert(`STEP 2: Config Found. Sending to: ${targetEmail}`); // DEBUG ALERT
+    setDispatchStatus("sending");
+
+    try {
+        const payload = {
+            patient_email: user.email,
+            hospital_email: targetEmail,
+            contact_name: emergencyConfig.contactName,
+            contact_phone: emergencyConfig.contactPhone,
+            home_address: emergencyConfig.homeAddress,
+            medical_conditions: emergencyConfig.medicalConditions
+        };
+
+        // Log what we are sending (Check Console for this object)
+        console.log("SENDING PAYLOAD:", payload);
+
+        const response = await fetch(`${RAW_URL}/emergency-email`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        alert(`STEP 3: Response Received. Status: ${response.status}`); // DEBUG ALERT
+
+        if (response.ok) {
+            setDispatchStatus("success");
+            alert("✅ SUCCESS: Server accepted the alert!");
+            setShowEmergencyModal(false);
+        } else {
+            const errorText = await response.text();
+            throw new Error(`Server rejected it: ${errorText}`);
+        }
+
+    } catch (err) {
+        alert(`❌ FAILURE: ${err.message}`); // DEBUG ALERT
+        console.error("DISPATCH ERROR:", err);
+        
+        // Fallback
+        alert("⚠️ Switching to Manual Email Fallback...");
+        const mailtoLink = `mailto:${targetEmail}?subject=URGENT&body=Emergency`;
+        window.location.href = mailtoLink; 
+        
+        setDispatchStatus("success");
+        setShowEmergencyModal(false);
+    } finally {
+        setDispatchStatus("idle");
+    }
   };
 
   const handleQuickStart = (symptom) => {
@@ -250,7 +302,7 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen w-full bg-slate-900 text-white font-sans overflow-hidden">
       
-      {/* --- SETTINGS FORM --- */}
+      {/* SETTINGS FORM */}
       {showSettings && (
          <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-slate-900 border border-white/10 p-8 rounded-2xl w-full max-w-lg shadow-2xl relative overflow-y-auto max-h-[90vh]">
@@ -263,7 +315,15 @@ export default function Dashboard() {
 
                 <form onSubmit={saveSettings} className="space-y-6">
                     <div className="space-y-3">
-                        <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Primary Contact</label>
+                        <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Patient Details</label>
+                        <input className="w-full bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
+                            value={emergencyConfig.homeAddress} onChange={e => setEmergencyConfig({...emergencyConfig, homeAddress: e.target.value})} placeholder="Home Address (e.g., 12 Lekki Phase 1)" required />
+                        <input className="w-full bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
+                            value={emergencyConfig.medicalConditions} onChange={e => setEmergencyConfig({...emergencyConfig, medicalConditions: e.target.value})} placeholder="Existing Conditions (e.g. Asthma, Diabetes, None)" />
+                    </div>
+
+                    <div className="space-y-3">
+                        <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Primary Contact (Next of Kin)</label>
                         <div className="grid grid-cols-2 gap-4">
                             <input className="bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
                                 value={emergencyConfig.contactName} onChange={e => setEmergencyConfig({...emergencyConfig, contactName: e.target.value})} placeholder="Full Name" required />
@@ -271,12 +331,13 @@ export default function Dashboard() {
                                 value={emergencyConfig.contactPhone} onChange={e => setEmergencyConfig({...emergencyConfig, contactPhone: e.target.value})} placeholder="Phone Number" type="tel" required />
                         </div>
                     </div>
+
                     <div className="space-y-3">
                         <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Preferred Care Facility</label>
                         <input className="w-full bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
                             value={emergencyConfig.hospitalName} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalName: e.target.value})} placeholder="Hospital / Clinic Name" />
                         <input className="w-full bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
-                            value={emergencyConfig.hospitalEmail} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalEmail: e.target.value})} placeholder="Hospital Official Email" type="email" required />
+                            value={emergencyConfig.hospitalEmail} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalEmail: e.target.value})} placeholder="Hospital Official Email (Required)" type="email" required />
                     </div>
                     <button type="submit" className="w-full bg-[#00CCFF] text-slate-900 font-bold py-4 rounded-xl hover:scale-105 transition-transform">Save Profile</button>
                 </form>
@@ -293,8 +354,22 @@ export default function Dashboard() {
                 <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-6 text-left">
                     <p className="text-sm text-slate-500 uppercase font-bold mb-1">Dispatching To:</p>
                     <p className="text-lg font-bold text-slate-900">{emergencyConfig.hospitalName || "Emergency Services"}</p>
+                    <p className="text-sm text-slate-600 truncate">{emergencyConfig.homeAddress || "Address Not Set"}</p>
                 </div>
-                <button onClick={handleEmergencyDispatch} className="w-full bg-red-600 hover:bg-red-700 text-white font-black text-xl py-4 rounded-xl shadow-lg uppercase mb-3">NOTIFY HOSPITAL NOW</button>
+                
+                <button 
+                    onClick={handleEmergencyDispatch} 
+                    disabled={dispatchStatus === "sending"}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white font-black text-xl py-4 rounded-xl shadow-lg uppercase mb-3 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                    {dispatchStatus === "sending" ? (
+                        <>
+                           <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                           DISPATCHING...
+                        </>
+                    ) : "NOTIFY HOSPITAL NOW"}
+                </button>
+                
                 <button onClick={() => setShowEmergencyModal(false)} className="text-slate-400 text-sm hover:text-slate-600 underline">Dismiss Alert</button>
             </div>
          </div>
@@ -302,7 +377,7 @@ export default function Dashboard() {
 
       {/* SIDEBAR (Responsive) */}
       <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 md:bg-transparent glass-prism border-r border-white/10 flex flex-col h-full transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
-        <div className="h-20 flex items-center justify-between px-6 border-b border-white/10 shrink-0">
+        <div className="h-16 md:h-20 flex items-center justify-between px-6 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 flex-shrink-0"><Logo /></div>
             <span className="text-white font-bold tracking-wider text-xl">REMEDI</span>
@@ -422,7 +497,18 @@ export default function Dashboard() {
             <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'ai' && <div className="w-8 h-8 mr-3 mt-1 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30 shrink-0"><Logo /></div>}
               <div className={`max-w-[85%] p-4 rounded-2xl border ${msg.role === 'user' ? 'bg-[#00CCFF]/10 border-[#00CCFF]/30 text-white rounded-tr-none' : 'bg-white/5 border-white/10 text-slate-200 rounded-tl-none'} text-sm md:text-base leading-relaxed`}>
-                {msg.role === 'ai' ? <ReactMarkdown>{msg.text}</ReactMarkdown> : msg.text}
+                {msg.role === 'ai' ? (
+                  <ReactMarkdown 
+                    components={{
+                      p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                      ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
+                      li: ({node, ...props}) => <li className="pl-1" {...props} />,
+                      strong: ({node, ...props}) => <span className="font-bold text-[#00CCFF]" {...props} />
+                    }}
+                  >
+                    {msg.text}
+                  </ReactMarkdown>
+                ) : msg.text}
               </div>
             </div>
           ))}
