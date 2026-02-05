@@ -27,7 +27,7 @@ export default function Dashboard() {
   // Status: idle | sending | success
   const [dispatchStatus, setDispatchStatus] = useState("idle"); 
 
-  // Emergency Profile State
+  // Emergency Profile State (NOW INCLUDES ADDRESS & CONDITIONS)
   const [emergencyConfig, setEmergencyConfig] = useState({ 
     contactName: '', 
     contactPhone: '',
@@ -137,9 +137,9 @@ export default function Dashboard() {
     } catch (error) { console.error(error); alert("Failed."); }
   };
 
-  // --- LOUD DEBUGGING VERSION ---
+  // --- LOUD DEBUGGING VERSION (With Auto-Fill Safety) ---
   const handleEmergencyDispatch = async () => {
-    alert("STEP 1: Button Clicked. Checking Config..."); // DEBUG ALERT
+    alert("STEP 1: Button Clicked. Checking Config..."); 
 
     const targetEmail = emergencyConfig.hospitalEmail;
     
@@ -150,20 +150,20 @@ export default function Dashboard() {
         return;
     }
 
-    alert(`STEP 2: Config Found. Sending to: ${targetEmail}`); // DEBUG ALERT
+    alert(`STEP 2: Config Found. Sending to: ${targetEmail}`); 
     setDispatchStatus("sending");
 
     try {
+        // SAFETY: If address/conditions are empty, send "Not Provided" so server doesn't crash
         const payload = {
             patient_email: user.email,
             hospital_email: targetEmail,
-            contact_name: emergencyConfig.contactName,
-            contact_phone: emergencyConfig.contactPhone,
-            home_address: emergencyConfig.homeAddress,
-            medical_conditions: emergencyConfig.medicalConditions
+            contact_name: emergencyConfig.contactName || "Unknown Contact",
+            contact_phone: emergencyConfig.contactPhone || "No Phone",
+            home_address: emergencyConfig.homeAddress || "Address Not Provided",
+            medical_conditions: emergencyConfig.medicalConditions || "None Listed"
         };
 
-        // Log what we are sending (Check Console for this object)
         console.log("SENDING PAYLOAD:", payload);
 
         const response = await fetch(`${RAW_URL}/emergency-email`, {
@@ -172,7 +172,7 @@ export default function Dashboard() {
             body: JSON.stringify(payload)
         });
 
-        alert(`STEP 3: Response Received. Status: ${response.status}`); // DEBUG ALERT
+        alert(`STEP 3: Response Received. Status: ${response.status}`); 
 
         if (response.ok) {
             setDispatchStatus("success");
@@ -184,7 +184,7 @@ export default function Dashboard() {
         }
 
     } catch (err) {
-        alert(`❌ FAILURE: ${err.message}`); // DEBUG ALERT
+        alert(`❌ FAILURE: ${err.message}`); 
         console.error("DISPATCH ERROR:", err);
         
         // Fallback
@@ -302,7 +302,7 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen w-full bg-slate-900 text-white font-sans overflow-hidden">
       
-      {/* SETTINGS FORM */}
+      {/* --- SETTINGS FORM --- */}
       {showSettings && (
          <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-slate-900 border border-white/10 p-8 rounded-2xl w-full max-w-lg shadow-2xl relative overflow-y-auto max-h-[90vh]">
@@ -323,7 +323,7 @@ export default function Dashboard() {
                     </div>
 
                     <div className="space-y-3">
-                        <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Primary Contact (Next of Kin)</label>
+                        <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Primary Contact</label>
                         <div className="grid grid-cols-2 gap-4">
                             <input className="bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
                                 value={emergencyConfig.contactName} onChange={e => setEmergencyConfig({...emergencyConfig, contactName: e.target.value})} placeholder="Full Name" required />
@@ -331,13 +331,12 @@ export default function Dashboard() {
                                 value={emergencyConfig.contactPhone} onChange={e => setEmergencyConfig({...emergencyConfig, contactPhone: e.target.value})} placeholder="Phone Number" type="tel" required />
                         </div>
                     </div>
-
                     <div className="space-y-3">
                         <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Preferred Care Facility</label>
                         <input className="w-full bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
                             value={emergencyConfig.hospitalName} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalName: e.target.value})} placeholder="Hospital / Clinic Name" />
                         <input className="w-full bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
-                            value={emergencyConfig.hospitalEmail} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalEmail: e.target.value})} placeholder="Hospital Official Email (Required)" type="email" required />
+                            value={emergencyConfig.hospitalEmail} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalEmail: e.target.value})} placeholder="Hospital Official Email" type="email" required />
                     </div>
                     <button type="submit" className="w-full bg-[#00CCFF] text-slate-900 font-bold py-4 rounded-xl hover:scale-105 transition-transform">Save Profile</button>
                 </form>
@@ -354,22 +353,8 @@ export default function Dashboard() {
                 <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-6 text-left">
                     <p className="text-sm text-slate-500 uppercase font-bold mb-1">Dispatching To:</p>
                     <p className="text-lg font-bold text-slate-900">{emergencyConfig.hospitalName || "Emergency Services"}</p>
-                    <p className="text-sm text-slate-600 truncate">{emergencyConfig.homeAddress || "Address Not Set"}</p>
                 </div>
-                
-                <button 
-                    onClick={handleEmergencyDispatch} 
-                    disabled={dispatchStatus === "sending"}
-                    className="w-full bg-red-600 hover:bg-red-700 text-white font-black text-xl py-4 rounded-xl shadow-lg uppercase mb-3 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                >
-                    {dispatchStatus === "sending" ? (
-                        <>
-                           <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                           DISPATCHING...
-                        </>
-                    ) : "NOTIFY HOSPITAL NOW"}
-                </button>
-                
+                <button onClick={handleEmergencyDispatch} className="w-full bg-red-600 hover:bg-red-700 text-white font-black text-xl py-4 rounded-xl shadow-lg uppercase mb-3">NOTIFY HOSPITAL NOW</button>
                 <button onClick={() => setShowEmergencyModal(false)} className="text-slate-400 text-sm hover:text-slate-600 underline">Dismiss Alert</button>
             </div>
          </div>
@@ -377,7 +362,7 @@ export default function Dashboard() {
 
       {/* SIDEBAR (Responsive) */}
       <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 md:bg-transparent glass-prism border-r border-white/10 flex flex-col h-full transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
-        <div className="h-16 md:h-20 flex items-center justify-between px-6 border-b border-white/10 shrink-0">
+        <div className="h-20 flex items-center justify-between px-6 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 flex-shrink-0"><Logo /></div>
             <span className="text-white font-bold tracking-wider text-xl">REMEDI</span>
@@ -432,101 +417,4 @@ export default function Dashboard() {
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>}
 
       <div className="flex-1 flex flex-col h-full min-w-0 relative z-10 pt-16 md:pt-0">
-        {/* MOBILE HEADER - RESTORED HAMBURGER */}
-        <div className="h-16 md:h-20 border-b border-white/5 flex items-center justify-between px-4 md:px-8 bg-slate-900/90 backdrop-blur-md sticky top-0 z-40">
-          <div className="flex items-center gap-3">
-             {/* Hamburger Button */}
-             <button onClick={() => setIsSidebarOpen(true)} className="md:hidden text-white p-1">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-             </button>
-             {/* Pulse Logic for Logo */}
-             <div className="w-8 h-8 md:w-10 md:h-10">
-                <Logo animate={isLoading} />
-             </div>
-             <div className="hidden md:block">
-                <h2 className="text-white font-semibold text-lg">AI Diagnostic Console</h2>
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-[#00CCFF] rounded-full animate-pulse"></span>
-                  <span className="text-xs text-[#00CCFF] tracking-widest uppercase">System Online</span>
-                </div>
-             </div>
-          </div>
-          
-          {messages.length > 0 && (
-            <button onClick={generatePDF} className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 md:px-4 rounded-lg text-xs font-bold flex items-center gap-2 transition-all hover:scale-105">
-              <svg className="w-4 h-4 text-[#00CCFF]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-              <span className="hidden md:inline">Download Report</span>
-              <span className="md:hidden">PDF</span>
-            </button>
-          )}
-        </div>
-
-        <div className="flex-1 p-4 md:p-8 overflow-y-auto space-y-6 relative custom-scrollbar">
-          {!currentSessionId && messages.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center p-4">
-               <div className="w-full max-w-3xl">
-                  <div className="text-center mb-10">
-                     <div className="w-24 h-24 mx-auto mb-6 opacity-90"><Logo animate={true} /></div>
-                     <h1 className="text-4xl md:text-5xl font-bold text-white mb-2 tracking-tight">System Online</h1>
-                     <p className="text-slate-400 text-lg">Select a quick diagnosis or describe your symptoms below.</p>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                     <button onClick={() => handleQuickStart("I have a severe headache.")} className="p-4 md:p-6 bg-slate-800/50 hover:bg-[#00CCFF]/10 border border-white/5 hover:border-[#00CCFF]/30 rounded-2xl transition-all group text-left">
-                        <span className="text-2xl mb-2 block">🤕</span>
-                        <span className="font-bold text-slate-200 group-hover:text-[#00CCFF]">Head & Neck</span>
-                     </button>
-                     <button onClick={() => handleQuickStart("I am coughing.")} className="p-4 md:p-6 bg-slate-800/50 hover:bg-[#00CCFF]/10 border border-white/5 hover:border-[#00CCFF]/30 rounded-2xl transition-all group text-left">
-                        <span className="text-2xl mb-2 block">🫁</span>
-                        <span className="font-bold text-slate-200 group-hover:text-[#00CCFF]">Respiratory</span>
-                     </button>
-                     <button onClick={() => handleQuickStart("I have a high fever.")} className="p-4 md:p-6 bg-slate-800/50 hover:bg-[#00CCFF]/10 border border-white/5 hover:border-[#00CCFF]/30 rounded-2xl transition-all group text-left">
-                        <span className="text-2xl mb-2 block">🤒</span>
-                        <span className="font-bold text-slate-200 group-hover:text-[#00CCFF]">Fever / Flu</span>
-                     </button>
-                     <button onClick={() => handleQuickStart("I have chest pains.")} className="p-4 md:p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/50 rounded-2xl transition-all group text-left">
-                        <span className="text-2xl mb-2 block">🆘</span>
-                        <span className="font-bold text-red-200 group-hover:text-red-100">Emergency</span>
-                     </button>
-                  </div>
-               </div>
-            </div>
-          )}
-
-          {messages.map((msg, index) => (
-            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {msg.role === 'ai' && <div className="w-8 h-8 mr-3 mt-1 bg-slate-800 rounded-full p-2 border border-[#00CCFF]/30 shrink-0"><Logo /></div>}
-              <div className={`max-w-[85%] p-4 rounded-2xl border ${msg.role === 'user' ? 'bg-[#00CCFF]/10 border-[#00CCFF]/30 text-white rounded-tr-none' : 'bg-white/5 border-white/10 text-slate-200 rounded-tl-none'} text-sm md:text-base leading-relaxed`}>
-                {msg.role === 'ai' ? (
-                  <ReactMarkdown 
-                    components={{
-                      p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
-                      ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
-                      li: ({node, ...props}) => <li className="pl-1" {...props} />,
-                      strong: ({node, ...props}) => <span className="font-bold text-[#00CCFF]" {...props} />
-                    }}
-                  >
-                    {msg.text}
-                  </ReactMarkdown>
-                ) : msg.text}
-              </div>
-            </div>
-          ))}
-          {isLoading && <div className="text-slate-500 italic ml-12 text-sm animate-pulse">Analyzing symptoms...</div>}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div className="p-4 md:p-6 bg-slate-900 border-t border-white/5 shrink-0 z-20">
-          <div className="max-w-4xl mx-auto relative">
-            <textarea id="chat-input" rows="1" placeholder="Describe your symptoms..." className="w-full bg-slate-800/80 text-white rounded-2xl border border-white/10 px-4 md:px-6 py-4 pr-16 focus:border-[#00CCFF] focus:outline-none resize-none" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyPress} disabled={isLoading} />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-              <button onClick={handleSend} disabled={isLoading} className="p-2 bg-[#00CCFF] rounded-xl text-slate-900 hover:scale-105 transition-all">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+        {/* MOBILE HEADER -
