@@ -20,10 +20,17 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   
-  // New States
+  // Features State
   const [showSettings, setShowSettings] = useState(false);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
-  const [emergencyConfig, setEmergencyConfig] = useState({ contactName: '', hospitalEmail: '' });
+  
+  // UPDATED: Comprehensive Emergency Profile State
+  const [emergencyConfig, setEmergencyConfig] = useState({ 
+    contactName: '', 
+    contactPhone: '',
+    hospitalName: '',
+    hospitalEmail: '' 
+  });
   
   const messagesEndRef = useRef(null);
 
@@ -58,7 +65,7 @@ export default function Dashboard() {
     if (!user) return;
     try {
         await setDoc(doc(db, "users", user.uid, "settings", "profile"), emergencyConfig);
-        alert("Emergency Profile Saved!");
+        alert("✅ Emergency Profile Updated Successfully");
         setShowSettings(false);
     } catch (err) { alert("Failed to save settings."); }
   };
@@ -126,18 +133,22 @@ export default function Dashboard() {
   };
 
   const handleEmergencyDispatch = () => {
-    const targetEmail = emergencyConfig.hospitalEmail || prompt("Enter hospital email:");
-    if (targetEmail) {
-        alert(`🚨 EMERGENCY REPORT DISPATCHED TO: ${targetEmail}`);
+    const targetEmail = emergencyConfig.hospitalEmail;
+    const targetPhone = emergencyConfig.contactPhone;
+    
+    if (!targetEmail && !targetPhone) {
+        alert("⚠️ No emergency contact found! Please go to Settings ⚙️ to configure your Emergency Profile.");
         setShowEmergencyModal(false);
+        setShowSettings(true); // Redirect to settings
+        return;
     }
+
+    alert(`🚨 EMERGENCY PROTOCOL INITIATED\n\nDispatching Report to:\n🏥 Hospital: ${emergencyConfig.hospitalName || "Unknown"}\n📧 Email: ${targetEmail || "N/A"}\n📞 Contact: ${targetPhone || "N/A"}`);
+    setShowEmergencyModal(false);
   };
 
-  // --- QUICK START HANDLER ---
   const handleQuickStart = (symptom) => {
      setInput(symptom);
-     // Auto-send would require moving logic out of handleSend or using a timeout, 
-     // but filling the input is safer for user confirmation.
      const inputField = document.getElementById("chat-input");
      if(inputField) inputField.focus();
   };
@@ -157,7 +168,13 @@ export default function Dashboard() {
     doc.setFontSize(10);
     doc.text(`Patient: ${user?.email || 'Anonymous'}`, 20, 50);
     doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 55);
-    let y = 70; 
+    
+    // Add Emergency Info to PDF header if available
+    if (emergencyConfig.contactName) {
+        doc.text(`Emergency Contact: ${emergencyConfig.contactName} (${emergencyConfig.contactPhone})`, 20, 60);
+    }
+
+    let y = 75; 
 
     const validMessages = messages.filter(msg => {
        const txt = msg.text.toLowerCase().trim();
@@ -233,19 +250,46 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen w-full bg-slate-900 text-white font-sans overflow-hidden">
-      {/* SETTINGS MODAL */}
+      
+      {/* --- NEW: COMPREHENSIVE EMERGENCY SETTINGS FORM --- */}
       {showSettings && (
          <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-slate-800 border border-white/10 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-                <h3 className="text-xl font-bold text-[#00CCFF] mb-4">Emergency Profile</h3>
-                <form onSubmit={saveSettings} className="space-y-4">
-                    <input className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-[#00CCFF] outline-none" 
-                        value={emergencyConfig.contactName} onChange={e => setEmergencyConfig({...emergencyConfig, contactName: e.target.value})} placeholder="Primary Contact Name" />
-                    <input className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-[#00CCFF] outline-none" 
-                        value={emergencyConfig.hospitalEmail} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalEmail: e.target.value})} placeholder="Preferred Hospital Email" />
-                    <div className="flex gap-2 pt-2">
-                        <button type="button" onClick={() => setShowSettings(false)} className="flex-1 py-3 rounded-xl hover:bg-white/5 border border-white/10">Cancel</button>
-                        <button type="submit" className="flex-1 bg-[#00CCFF] text-slate-900 font-bold py-3 rounded-xl hover:scale-105">Save</button>
+            <div className="bg-slate-900 border border-white/10 p-8 rounded-2xl w-full max-w-lg shadow-2xl relative">
+                <button onClick={() => setShowSettings(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white">✕</button>
+                
+                <div className="flex items-center gap-3 mb-2">
+                    <span className="text-2xl">⚙️</span>
+                    <h3 className="text-xl font-bold text-white">Emergency Profile Setup</h3>
+                </div>
+                <p className="text-slate-400 text-sm mb-6">
+                    Configure your emergency contacts and preferred hospital. This allows Remedi to dispatch alerts instantly in critical situations.
+                </p>
+
+                <form onSubmit={saveSettings} className="space-y-6">
+                    {/* SECTION 1: PERSONAL CONTACT */}
+                    <div className="space-y-3">
+                        <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Primary Contact (Family/Next of Kin)</label>
+                        <div className="grid grid-cols-2 gap-4">
+                            <input className="bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
+                                value={emergencyConfig.contactName} onChange={e => setEmergencyConfig({...emergencyConfig, contactName: e.target.value})} placeholder="Full Name" required />
+                            <input className="bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
+                                value={emergencyConfig.contactPhone} onChange={e => setEmergencyConfig({...emergencyConfig, contactPhone: e.target.value})} placeholder="Phone Number" type="tel" required />
+                        </div>
+                    </div>
+
+                    {/* SECTION 2: MEDICAL FACILITY */}
+                    <div className="space-y-3">
+                        <label className="text-xs uppercase text-[#00CCFF] font-bold tracking-widest">Preferred Care Facility</label>
+                        <input className="w-full bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
+                            value={emergencyConfig.hospitalName} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalName: e.target.value})} placeholder="Hospital / Clinic Name" />
+                        <input className="w-full bg-slate-800 border border-white/10 rounded-xl p-3 text-white focus:border-[#00CCFF] outline-none text-sm" 
+                            value={emergencyConfig.hospitalEmail} onChange={e => setEmergencyConfig({...emergencyConfig, hospitalEmail: e.target.value})} placeholder="Hospital Official Email (e.g. emergency@hospital.com)" type="email" required />
+                    </div>
+
+                    <div className="pt-4">
+                        <button type="submit" className="w-full bg-[#00CCFF] text-slate-900 font-bold py-4 rounded-xl hover:scale-105 transition-transform shadow-lg shadow-cyan-500/20">
+                            Save Emergency Profile
+                        </button>
                     </div>
                 </form>
             </div>
@@ -260,7 +304,8 @@ export default function Dashboard() {
                 <h2 className="text-3xl font-black mb-2 uppercase">Emergency Detected</h2>
                 <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-6 text-left">
                     <p className="text-sm text-slate-500 uppercase font-bold mb-1">Dispatching To:</p>
-                    <p className="text-lg font-bold text-slate-900">{emergencyConfig.hospitalEmail || "Emergency Services (Pending Input)"}</p>
+                    <p className="text-lg font-bold text-slate-900">{emergencyConfig.hospitalName || "Emergency Services"}</p>
+                    <p className="text-sm text-slate-600">{emergencyConfig.hospitalEmail || "No email configured"}</p>
                 </div>
                 <div className="flex flex-col gap-3">
                     <button onClick={handleEmergencyDispatch} className="w-full bg-red-600 hover:bg-red-700 text-white font-black text-xl py-4 rounded-xl shadow-lg uppercase">NOTIFY HOSPITAL NOW</button>
@@ -298,7 +343,6 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-[1fr_auto] gap-2 mb-8">
-              {/* FIXED: Shortened text to prevent wrap */}
               <button onClick={requestDoctor} className="p-3 rounded-xl bg-[#00CCFF] hover:bg-[#00bfe6] text-slate-900 font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg hover:scale-105">
                  <span>👨‍⚕️</span> Consult Specialist
               </button>
@@ -328,6 +372,7 @@ export default function Dashboard() {
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>}
 
       <div className="flex-1 flex flex-col h-full min-w-0 relative z-10 pt-16 md:pt-0">
+        {/* HEADER */}
         <div className="h-20 min-h-[5rem] border-b border-white/5 flex items-center justify-between px-4 md:px-8 bg-slate-900/50 backdrop-blur-sm shrink-0">
           <div>
             <h2 className="text-white font-semibold text-lg">AI Diagnostic Console</h2>
@@ -336,16 +381,18 @@ export default function Dashboard() {
               <span className="text-xs text-[#00CCFF] tracking-widest uppercase">System Online</span>
             </div>
           </div>
+          
+          {/* FIX: DOWNLOAD BUTTON ALWAYS SHOWS IF MESSAGES EXIST */}
           {messages.length > 0 && (
             <button onClick={generatePDF} className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 md:px-4 rounded-lg text-xs font-bold flex items-center gap-2 transition-all hover:scale-105">
-              <span>Download Report</span>
+              <svg className="w-4 h-4 text-[#00CCFF]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              <span className="hidden md:inline">Download Report</span>
+              <span className="md:hidden">PDF</span>
             </button>
           )}
         </div>
 
         <div className="flex-1 p-4 md:p-8 overflow-y-auto space-y-6 relative custom-scrollbar">
-          
-          {/* PREMIUM INTRO: REPLACES BORING TEXT */}
           {!currentSessionId && messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center p-4">
                <div className="w-full max-w-3xl">
