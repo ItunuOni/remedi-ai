@@ -11,15 +11,17 @@ from dotenv import load_dotenv
 # 1. Setup
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
-email_user = os.getenv("EMAIL_USER") # Your Gmail Address
-email_pass = os.getenv("EMAIL_PASS") # Your Gmail App Password
+email_user = os.getenv("EMAIL_USER")
+email_pass = os.getenv("EMAIL_PASS")
 
+# Fallback for API Key
 if not api_key:
     api_key = os.getenv("GOOGLE_API_KEY")
 
-genai.configure(api_key=api_key)
+if not api_key:
+    print("CRITICAL WARNING: GEMINI_API_KEY is missing!")
 
-# Using the stable model found in your scan
+genai.configure(api_key=api_key)
 model = genai.GenerativeModel('models/gemini-2.0-flash') 
 
 app = FastAPI()
@@ -48,51 +50,44 @@ class EmergencyRequest(BaseModel):
     home_address: str
     medical_conditions: str
 
-# 4. The Brain (Chat & Summary)
+# 4. The Brain
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
         system_instruction = (
             "You are REMEDI, a helpful home health assistant. "
-            "IMPORTANT RULES:"
-            "1. SPEAK SIMPLY: Use simple English. No complex medical jargon."
-            "2. BE DIRECT: Ignore pleasantries like 'Thank you' or 'Hello'."
-            "3. RECOMMENDATIONS: Suggest OTC meds (Panadol, Vitamin C) and home remedies."
-            "4. 🚨 CRITICAL SAFETY: If the user mentions life-threatening symptoms (chest pain, coughing blood, can't breathe, dying, unconsciousness, severe bleeding), "
-            "YOU MUST start your response with exactly: '🚨 EMERGENCY_TRIGGER 🚨'. Then tell them to go to the hospital immediately."
+            "RULES: Speak simply. Be direct. Suggest OTC meds. "
+            "SAFETY: If symptoms are life-threatening (chest pain, blood, dying), "
+            "start response with: '🚨 EMERGENCY_TRIGGER 🚨'."
         )
         full_prompt = f"{system_instruction}\n\nPatient: {request.message}\nRemedi:"
         response = model.generate_content(full_prompt)
         return {"response": response.text}
     except Exception as e:
-        print(f"ERROR: {str(e)}") 
+        print(f"CHAT ERROR: {str(e)}") 
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/summarize")
 async def summarize_endpoint(request: SummaryRequest):
     try:
-        system_instruction = (
-            "You are a Medical Scribe. Summarize the following chat history into a professional note for a doctor."
-            "RULES:"
-            "1. IGNORE pleasantries."
-            "2. EXTRACT ONLY: Symptoms, Duration, Severity, and any Meds taken."
-            "3. FORMAT: Keep it under 50 words. Be blunt."
-        )
-        full_prompt = f"{system_instruction}\n\nHISTORY:\n{request.history}\n\nDoctor Note:"
+        full_prompt = f"Summarize this medical history into a doctor's note (under 50 words):\n\n{request.history}"
         response = model.generate_content(full_prompt)
         return {"response": response.text}
     except Exception as e:
-        print(f"ERROR: {str(e)}") 
+        print(f"SUMMARY ERROR: {str(e)}") 
         raise HTTPException(status_code=500, detail=str(e))
 
-# 5. NEW: The Emergency Email Dispatcher
+# 5. EMERGENCY EMAIL ENGINE
 @app.post("/emergency-email")
 async def send_emergency_email(request: EmergencyRequest):
+    # Debug Print to Server Logs
+    print(f"Attempting to send email from: {email_user} to {request.hospital_email}")
+
     if not email_user or not email_pass:
-        raise HTTPException(status_code=500, detail="Server Email Credentials Missing")
+        print("ERROR: Email Credentials missing on Server.")
+        raise HTTPException(status_code=500, detail="Server Configuration Error: Missing Email Credentials")
 
     try:
-        # Create the email
         msg = MIMEMultipart()
         msg['From'] = email_user
         msg['To'] = request.hospital_email
@@ -102,42 +97,32 @@ async def send_emergency_email(request: EmergencyRequest):
         URGENT MEDICAL ALERT - REMEDI SYSTEM
         ====================================
         
-        PATIENT DETAILS:
-        ----------------
-        Account ID: {request.patient_email}
-        Home Address: {request.home_address}
-        Medical History: {request.medical_conditions}
+        PATIENT: {request.patient_email}
+        LOCATION: {request.home_address}
+        CONDITIONS: {request.medical_conditions}
         
-        EMERGENCY CONTACT:
-        ------------------
-        Name: {request.contact_name}
-        Phone: {request.contact_phone}
+        CONTACT: {request.contact_name} ({request.contact_phone})
         
-        STATUS:
-        -------
-        The patient has triggered a CRITICAL HEALTH ALERT via the Remedi App.
-        Immediate medical attention is requested at the location above.
-        
-        ------------------------------------
-        Sent automatically by Remedi AI
+        STATUS: CRITICAL SYMPTOMS REPORTED via Remedi App.
+        Immediate attention required.
         """
-        
         msg.attach(MIMEText(body, 'plain'))
 
-        # Send via Gmail SMTP
+        # Connect to Gmail
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(email_user, email_pass)
-        text = msg.as_string()
-        server.sendmail(email_user, request.hospital_email, text)
+        server.sendmail(email_user, request.hospital_email, msg.as_string())
         server.quit()
 
-        return {"status": "success", "message": "Emergency Alert Dispatched"}
+        print("Email sent successfully!")
+        return {"status": "success", "message": "Alert Dispatched"}
 
     except Exception as e:
-        print(f"EMAIL ERROR: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+        print(f"EMAIL FAILED: {str(e)}")
+        # Return the specific error so we can see it in the frontend console
+        raise HTTPException(status_code=500, detail=f"Email Failure: {str(e)}")
 
 @app.get("/")
 def home():
-    return {"status": "Remedi System Online"}
+    return {"status": "Remedi System Online", "email_service": "configured" if email_user else "missing"}
